@@ -1,0 +1,56 @@
+{
+  "name": "organ-donation-zkp",
+  "version": "1.0.0",
+  "description": "ZKP-Authenticated PFE-Gated Organ Donation System on Blockchain",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "test:gas": "REPORT_GAS=true hardhat test",
+    "coverage": "hardhat coverage",
+    "node": "hardhat node",
+    "deploy:local": "hardhat run scripts/deploy.js --network localhost",
+    "deploy:ganache": "hardhat run scripts/deploy.js --network ganache",
+    "ceremony": "node scripts/setupCeremony.js",
+    "proof": "node scripts/generateProof.js",
+    "server": "node server/index.js",
+    "server:dev": "nodemon server/index.js",
+    "dev": "concurrently \"npm run node\" \"npm run server:dev\" \"npm run frontend\"",
+    "frontend": "vite",
+    "build:frontend": "vite build",
+    "lint": "eslint contracts/**/*.sol server/**/*.js --ext .js,.sol",
+    "clean": "hardhat clean && rimraf circuits/build/*.zkey circuits/build/*.r1cs deployments/*.json"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.0.2",
+    "circomlibjs": "^0.1.7",
+    "cors": "^2.8.5",
+    "ethers": "^6.13.5",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0",
+    "helmet": "^8.0.0",
+    "ipfs-http-client": "^60.0.1",
+    "node-seal": "^5.1.5",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "snarkjs": "^0.7.5"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-network-helpers": "^1.0.12",
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@vitejs/plugin-react": "^6.1.0",
+    "chai": "^4.5.0",
+    "concurrently": "^9.1.2",
+    "hardhat": "^2.22.18",
+    "hardhat-contract-sizer": "^2.10.0",
+    "hardhat-gas-reporter": "^1.0.10",
+    "nodemon": "^3.1.9",
+    "rimraf": "^6.0.1",
+    "vite": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=9.0.0"
+  }
+}
