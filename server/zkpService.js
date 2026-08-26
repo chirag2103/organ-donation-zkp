@@ -245,4 +245,117 @@ async function verifyProofLocally(proof, publicInputs) {
   return snarkjs.groth16.verify(vkey, publicInputs, snarkjsProof);
 }
 
-module.exports = { initZKP, generateProof, verifyProofLocally, poseidonHash };
+// ── BN128 scalar field prime ──────────────────────────────────────────────────
+const PRIME_R = BigInt('21888242871839275222246405745257275088548364400416034343698204186575808495617');
+
+/**
+ * Derive a BN128-compatible credential scalar from a passphrase.
+ * credential = keccak256("zkp-credential:role<N>:<passphrase>") mod PRIME_R
+ * Matches the formula in RoleAuth.jsx and scripts/generateProof.js.
+ *
+ * @param {string} passphrase  User's passphrase (private)
+ * @param {number} roleId
+ * @returns {BigInt}
+ */
+function deriveCredentialFromPassphrase(passphrase, roleId) {
+  const { ethers } = require('ethers');
+  const preimage   = ethers.toUtf8Bytes(`zkp-credential:role${roleId}:${passphrase}`);
+  const hash       = ethers.keccak256(preimage);
+  return BigInt(hash) % PRIME_R;
+}
+
+/**
+ * Build a 20-level Poseidon Merkle tree with leafScalar at index 0.
+ * Returns root (BigInt) + sibling path for leaf[0].
+ *
+ * @param {BigInt} leafScalar
+ * @param {number} depth
+ * @returns {{ root: BigInt, pathElements: BigInt[], pathIndices: number[] }}
+ */
+function buildMerkleTree(leafScalar, depth = 20) {
+  if (!poseidon) throw new Error('ZKP not initialised');
+  const F    = poseidon.F;
+  const zero = BigInt(0);
+
+  let layer = [leafScalar, ...Array(Math.pow(2, depth) - 1).fill(zero)];
+  const pathElements = [];
+  const pathIndices  = [];
+
+  for (let lvl = 0; lvl < depth; lvl++) {
+    // Leaf 0 is always on the left; its sibling is layer[1]
+    pathIndices.push(0);
+    pathElements.push(layer[1]);
+
+    const next = [];
+    for (let i = 0; i < layer.length; i += 2) {
+      const h = F.toObject(poseidon([layer[i], layer[i + 1]]));
+      next.push(BigInt(h));
+    }
+    layer = next;
+  }
+
+  return { root: layer[0], pathElements, pathIndices };
+}
+
+/**
+ * All-in-one: derive credential → build Merkle tree → register root → generate proof.
+ *
+ * @param {object} params
+ * @param {string} params.credential  Hex credential (already derived by client)
+ * @param {number} params.roleId
+ * @param {string} params.salt        Hex random salt
+ * @param {string} params.rpcUrl      Blockchain RPC URL
+ * @param {string} params.deployerKey Deployer private key (Hardhat Account #0)
+ * @param {string} params.roleRegistryAddr  RoleRegistry contract address
+ * @returns {Promise<{ proof, publicInputs, merkleRoot }>}
+ */
+async function generateAndRegister({
+  credential, roleId, salt,
+  rpcUrl, deployerKey, roleRegistryAddr,
+}) {
+  if (!poseidon) throw new Error('ZKP not initialised');
+
+  // 1. Parse credential scalar
+  const credBig = BigInt(credential.startsWith('0x') ? credential : `0x${credential}`);
+  const saltBig = BigInt(salt.startsWith('0x') ? salt : `0x${salt}`);
+  const roleBig = BigInt(roleId);
+
+  // 2. Build Merkle tree
+  const { root, pathElements, pathIndices } = buildMerkleTree(credBig, 20);
+  const merkleRootHex = '0x' + root.toString(16).padStart(64, '0');
+
+  // 3. Register root on-chain
+  const { ethers } = require('ethers');
+  const provider   = new ethers.JsonRpcProvider(rpcUrl);
+  const signer     = new ethers.Wallet(deployerKey, provider);
+  const roleRegABI = [
+    'function registerCredentialRoot(uint8 roleId, bytes32 merkleRoot) external',
+    'function getRoleRoot(uint8) view returns (bytes32)',
+  ];
+  const roleReg = new ethers.Contract(roleRegistryAddr, roleRegABI, signer);
+
+  // Only register if different from current root (save gas)
+  const currentRoot = await roleReg.getRoleRoot(roleId);
+  if (currentRoot.toLowerCase() !== merkleRootHex.toLowerCase()) {
+    const tx = await roleReg.registerCredentialRoot(roleId, merkleRootHex);
+    await tx.wait();
+    console.log(`[ZKP] Registered root for role ${roleId}: ${merkleRootHex.slice(0,18)}...`);
+  } else {
+    console.log(`[ZKP] Root already current for role ${roleId}`);
+  }
+
+  // 4. Generate proof using the real Merkle tree path
+  const result = await generateProof({
+    credential: credBig,
+    roleId,
+    salt: saltBig,
+    merkleRoot: root,
+    pathElements,
+    pathIndices,
+  });
+
+  return { ...result, merkleRoot: merkleRootHex };
+}
+
+module.exports = { initZKP, generateProof, generateAndRegister, verifyProofLocally, poseidonHash };
+

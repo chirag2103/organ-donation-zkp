@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+import "./IZKPVerifier.sol";
+
 /**
  * @title MockZKPVerifier
  * @notice Test-only mock that returns a configurable boolean from verifyProof().
- *         Used in unit tests to isolate PFEKeyIssuer and downstream contracts
- *         from Groth16 cryptographic operations.
+ *         Implements IZKPVerifier so it can be passed anywhere a real verifier
+ *         is expected without importing the heavy Groth16Verifier contract.
  */
-contract MockZKPVerifier {
+contract MockZKPVerifier is IZKPVerifier {
     bool private _shouldVerify;
 
     event VerificationResult(address indexed caller, bool verified, bytes32 roleHash);
@@ -17,13 +19,11 @@ contract MockZKPVerifier {
     }
 
     function verifyProof(
-        uint256[2]    memory, /* a */
-        uint256[2][2] memory, /* b */
-        uint256[2]    memory, /* c */
-        uint256[4]    memory input
-    ) external returns (bool) {
-        bytes32 roleHash = keccak256(abi.encodePacked(input[0], input[1]));
-        emit VerificationResult(msg.sender, _shouldVerify, roleHash);
+        uint256[2]    calldata, /* a */
+        uint256[2][2] calldata, /* b */
+        uint256[2]    calldata, /* c */
+        uint256[4]    calldata input
+    ) external override returns (bool) {
         return _shouldVerify;
     }
 

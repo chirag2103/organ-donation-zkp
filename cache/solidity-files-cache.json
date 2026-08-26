@@ -81,8 +81,8 @@
       ]
     },
     "D:\\MTech\\Major_Project\\Implementation\\organ-donation-zkp\\contracts\\PFEKeyIssuer.sol": {
-      "lastModificationDate": 1787482577499,
-      "contentHash": "ae387092fa74cca8df0f3983c33e9281",
+      "lastModificationDate": 1787515245360,
+      "contentHash": "a26ecc1834085af740f4c98165fa2b8f",
       "sourceName": "contracts/PFEKeyIssuer.sol",
       "solcConfig": {
         "version": "0.8.20",
@@ -110,7 +110,7 @@
         }
       },
       "imports": [
-        "./ZKPVerifier.sol",
+        "./IZKPVerifier.sol",
         "./RoleRegistry.sol"
       ],
       "versionPragmas": [
@@ -121,8 +121,8 @@
       ]
     },
     "D:\\MTech\\Major_Project\\Implementation\\organ-donation-zkp\\contracts\\ZKPVerifier.sol": {
-      "lastModificationDate": 1787483862352,
-      "contentHash": "d20a5c68f59d4d4e0d3eeb408b3a7dc4",
+      "lastModificationDate": 1787542705120,
+      "contentHash": "7fd43185b81fcad89d1bec9e6d5017a9",
       "sourceName": "contracts/ZKPVerifier.sol",
       "solcConfig": {
         "version": "0.8.20",
@@ -149,7 +149,10 @@
           }
         }
       },
-      "imports": [],
+      "imports": [
+        "./IZKPVerifier.sol",
+        "./Groth16Verifier.sol"
+      ],
       "versionPragmas": [
         "^0.8.20"
       ],
@@ -273,9 +276,122 @@
       ]
     },
     "D:\\MTech\\Major_Project\\Implementation\\organ-donation-zkp\\contracts\\MockZKPVerifier.sol": {
-      "lastModificationDate": 1787483396853,
-      "contentHash": "a0bca15cb49190ed8da29dc34c9c3939",
+      "lastModificationDate": 1787542714289,
+      "contentHash": "9d590ace97bc625c7f49be1f94b323ac",
       "sourceName": "contracts/MockZKPVerifier.sol",
+      "solcConfig": {
+        "version": "0.8.20",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "viaIR": false,
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [
+        "./IZKPVerifier.sol"
+      ],
+      "versionPragmas": [
+        "^0.8.20"
+      ],
+      "artifacts": [
+        "MockZKPVerifier"
+      ]
+    },
+    "D:\\MTech\\Major_Project\\Implementation\\organ-donation-zkp\\contracts\\ZKPVerifier_generated.sol": {
+      "lastModificationDate": 1787514990395,
+      "contentHash": "1043009922b70f662cb0561ab384829e",
+      "sourceName": "contracts/ZKPVerifier_generated.sol",
+      "solcConfig": {
+        "version": "0.8.20",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "viaIR": false,
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        ">=0.7.0 <0.9.0"
+      ],
+      "artifacts": [
+        "Groth16Verifier"
+      ]
+    },
+    "D:\\MTech\\Major_Project\\Implementation\\organ-donation-zkp\\contracts\\Groth16Verifier.sol": {
+      "lastModificationDate": 1787515225579,
+      "contentHash": "1043009922b70f662cb0561ab384829e",
+      "sourceName": "contracts/Groth16Verifier.sol",
+      "solcConfig": {
+        "version": "0.8.20",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "viaIR": false,
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        ">=0.7.0 <0.9.0"
+      ],
+      "artifacts": [
+        "Groth16Verifier"
+      ]
+    },
+    "D:\\MTech\\Major_Project\\Implementation\\organ-donation-zkp\\contracts\\IZKPVerifier.sol": {
+      "lastModificationDate": 1787542693867,
+      "contentHash": "504a2bfde7e9a9bcacfc3da06f7d3cf1",
+      "sourceName": "contracts/IZKPVerifier.sol",
       "solcConfig": {
         "version": "0.8.20",
         "settings": {
@@ -306,7 +422,7 @@
         "^0.8.20"
       ],
       "artifacts": [
-        "MockZKPVerifier"
+        "IZKPVerifier"
       ]
     }
   }

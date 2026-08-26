@@ -40,7 +40,7 @@ async function main() {
   // ── Step 1: Deploy ZKPVerifier ────────────────────────────────────────────
   console.log('1. Deploying ZKPVerifier...');
   const ZKPVerifier = await ethers.getContractFactory('ZKPVerifier');
-  const zkpVerifier = await ZKPVerifier.deploy();
+  const zkpVerifier = await ZKPVerifier.deploy(ethers.ZeroAddress);
   await zkpVerifier.waitForDeployment();
   const zkpAddr = await zkpVerifier.getAddress();
   console.log('   ✓ ZKPVerifier deployed at:', zkpAddr);

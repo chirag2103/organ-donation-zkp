@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@openzeppelin/contracts": "^5.0.2",
+    "circomlib": "^2.0.5",
     "circomlibjs": "^0.1.7",
     "cors": "^2.8.5",
     "ethers": "^6.13.5",

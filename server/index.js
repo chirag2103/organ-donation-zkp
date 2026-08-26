@@ -102,6 +102,53 @@ app.post('/api/zkp/generate', async (req, res) => {
   }
 });
 
+// ── ZKP generate-and-register (all-in-one for UI) ────────────────────────────
+/**
+ * POST /api/zkp/generate-and-register
+ * Body: { credential: hex, roleId: number, salt: hex }
+ *
+ * Server-side flow:
+ *   1. Build 20-level Poseidon Merkle tree with credential as leaf[0]
+ *   2. Register computed root on-chain via RoleRegistry (deployer key)
+ *   3. Generate Groth16 proof with the real Merkle path
+ *   4. Return proof + publicInputs (credential and salt are NEVER in response)
+ *
+ * SECURITY: credential and salt are private — response contains ONLY proof + publicInputs.
+ */
+app.post('/api/zkp/generate-and-register', async (req, res) => {
+  const { credential, roleId, salt } = req.body;
+  if (!credential || roleId === undefined || !salt) {
+    return res.status(400).json({ error: 'Missing credential, roleId, or salt' });
+  }
+  if (typeof roleId !== 'number' || roleId < 0 || roleId > 5) {
+    return res.status(400).json({ error: 'roleId must be 0–5' });
+  }
+
+  try {
+    const deployments = loadDeployments();
+    if (!deployments) return res.status(503).json({ error: 'Contracts not deployed' });
+
+    const DEPLOYER_KEY = process.env.DEPLOYER_KEY ||
+      '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
+    const RPC_URL = process.env.RPC_URL || 'http://127.0.0.1:8545';
+
+    const result = await zkpService.generateAndRegister({
+      credential,
+      roleId,
+      salt,
+      rpcUrl:           RPC_URL,
+      deployerKey:      DEPLOYER_KEY,
+      roleRegistryAddr: deployments.RoleRegistry,
+    });
+
+    res.json(result);
+  } catch (err) {
+    console.error('[ZKP] generate-and-register error:', err.message);
+    res.status(500).json({ error: 'Proof generation failed', detail: err.message });
+  }
+});
+
+
 // ── PFE encrypt endpoint ──────────────────────────────────────────────────
 /**
  * POST /api/pfe/encrypt
@@ -259,6 +306,69 @@ app.get('/api/status', async (req, res) => {
     seal:       true, // SEAL is synchronously initialised at startup
     timestamp:  new Date().toISOString(),
   });
+});
+
+// ── [DEV ONLY] Register a Merkle root for a role ─────────────────────────
+/**
+ * POST /api/dev/register-root
+ * Body: { roleId: number, merkleRoot: string (hex) }
+ * Response: { txHash, block, registeredRoot }
+ *
+ * Uses Hardhat Account #0 (deployer) private key to call
+ * RoleRegistry.registerCredentialRoot(roleId, merkleRoot) on-chain.
+ *
+ * In production, this would be a separate admin tool with HSM-protected key.
+ * Here it exists so the dev demo can register a user's real Merkle root before proof.
+ */
+app.post('/api/dev/register-root', async (req, res) => {
+  const { roleId, merkleRoot } = req.body;
+  if (roleId === undefined || !merkleRoot) {
+    return res.status(400).json({ error: 'Missing roleId or merkleRoot' });
+  }
+  if (typeof roleId !== 'number' || roleId < 0 || roleId > 5) {
+    return res.status(400).json({ error: 'roleId must be 0-5' });
+  }
+  if (!/^0x[0-9a-fA-F]{64}$/.test(merkleRoot)) {
+    return res.status(400).json({ error: 'merkleRoot must be a 32-byte hex string (0x + 64 hex chars)' });
+  }
+  try {
+    const deployments = loadDeployments();
+    if (!deployments) return res.status(503).json({ error: 'Contracts not deployed' });
+
+    // Hardhat Account #0 — deployer / contract owner
+    const DEPLOYER_KEY = process.env.DEPLOYER_KEY ||
+      '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
+
+    const provider = new ethers.JsonRpcProvider(
+      process.env.RPC_URL || 'http://127.0.0.1:8545'
+    );
+    const signer = new ethers.Wallet(DEPLOYER_KEY, provider);
+
+    const roleRegABI = [
+      'function registerCredentialRoot(uint8 roleId, bytes32 merkleRoot) external',
+      'function getRoleRoot(uint8 roleId) view returns (bytes32)',
+    ];
+    const roleRegistry = new ethers.Contract(deployments.RoleRegistry, roleRegABI, signer);
+
+    // Check if root already registered (avoid unnecessary tx)
+    const currentRoot = await roleRegistry.getRoleRoot(roleId);
+    if (currentRoot.toLowerCase() === merkleRoot.toLowerCase()) {
+      return res.json({ message: 'Root already registered', registeredRoot: merkleRoot, txHash: null });
+    }
+
+    const tx = await roleRegistry.registerCredentialRoot(roleId, merkleRoot);
+    const receipt = await tx.wait();
+    console.log(`[DEV] Registered Merkle root for role ${roleId}: ${merkleRoot.slice(0,18)}... tx=${tx.hash.slice(0,12)}...`);
+
+    res.json({
+      txHash:         tx.hash,
+      block:          receipt.blockNumber,
+      registeredRoot: merkleRoot,
+    });
+  } catch (err) {
+    console.error('[DEV] register-root error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── 404 handler ───────────────────────────────────────────────────────────

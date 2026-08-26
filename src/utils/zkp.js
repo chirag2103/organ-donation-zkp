@@ -1,54 +1,45 @@
 /**
  * src/utils/zkp.js
  * ─────────────────────────────────────────────────────────────────────────────
- * Browser-side ZKP proof generation wrapper.
- * Calls the backend /api/zkp/generate endpoint — private inputs are sent
- * over HTTPS and never stored in the browser (cleared from memory post-call).
+ * Browser-side ZKP helpers.
  *
- * For maximum security, proof generation can also be done fully in-browser
- * using snarkjs WASM — uncomment the local generation section if needed.
+ * Proof flow:
+ *   generateRoleProof()      — Sends credential+passphrase to backend;
+ *                              server builds the Merkle tree, generates the proof,
+ *                              registers the root on-chain, and returns proof + publicInputs.
+ *   formatProofForContract() — Shapes proof arrays for Solidity calldata.
+ *   generateSalt()           — Cryptographically random 248-bit salt.
+ *
+ * NOTE: Merkle tree construction is server-side (requires circomlibjs which
+ *       needs Node.js). Private inputs (credential, salt) are sent to the
+ *       backend over the loopback proxy (never outside localhost in dev).
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const API_BASE = import.meta.env.VITE_API_URL || '';
+// empty string → relative URLs → Vite proxy forwards /api/* to localhost:3001
 
 /**
- * Generate a Groth16 ZKP proof for a role credential.
+ * Generate a Groth16 ZKP proof and register the Merkle root on-chain.
+ * The backend:
+ *   1. Derives credential from passphrase (same formula as deriveCredential())
+ *   2. Builds a 20-level Poseidon Merkle tree with credential as leaf[0]
+ *   3. Registers the root via RoleRegistry (deployer key)
+ *   4. Generates the Groth16 proof
+ *   5. Verifies locally
+ *   6. Returns proof + publicInputs
  *
- * @param {object} params
- * @param {string}   params.credential    Hex-encoded credential scalar.
- * @param {number}   params.roleId        Role ID (0–5).
- * @param {string}   params.salt          Hex-encoded random salt.
- * @param {string}   params.merkleRoot    Hex-encoded Merkle root from RoleRegistry.
- * @param {string[]} params.pathElements  20 sibling hashes (hex strings).
- * @param {number[]} params.pathIndices   20 path direction bits (0 or 1).
- *
- * @returns {Promise<{
- *   proof:        { a: string[], b: string[][], c: string[] },
- *   publicInputs: string[]
- * }>}
- *
- * @throws {Error} If the backend returns an error.
+ * @param {object}  params
+ * @param {string}  params.credential  Hex credential scalar (private)
+ * @param {number}  params.roleId      Role ID 0–5
+ * @param {string}  params.salt        Hex random salt (private)
+ * @returns {Promise<{ proof: {a,b,c}, publicInputs: string[] }>}
  */
-export async function generateRoleProof({
-  credential,
-  roleId,
-  salt,
-  merkleRoot,
-  pathElements,
-  pathIndices,
-}) {
-  const response = await fetch(`${API_BASE}/api/zkp/generate`, {
+export async function generateRoleProof({ credential, roleId, salt }) {
+  const response = await fetch(`${API_BASE}/api/zkp/generate-and-register`, {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({
-      credential,
-      roleId,
-      salt,
-      merkleRoot,
-      pathElements: pathElements || Array(20).fill('0'),
-      pathIndices:  pathIndices  || Array(20).fill(0),
-    }),
+    body:    JSON.stringify({ credential, roleId, salt }),
   });
 
   if (!response.ok) {
@@ -57,19 +48,14 @@ export async function generateRoleProof({
   }
 
   const result = await response.json();
-
-  // Validate response structure
   if (!result.proof || !result.publicInputs) {
     throw new Error('Invalid proof response from server');
   }
-
   return result;
 }
 
 /**
- * Format a proof for on-chain submission to PFEKeyIssuer.verifyAndIssueKey().
- * Returns arrays compatible with Solidity uint256 types.
- *
+ * Format a proof object for on-chain Solidity calldata submission.
  * @param {{ a: string[], b: string[][], c: string[] }} proof
  * @returns {{ a, b, c }}
  */
@@ -82,8 +68,8 @@ export function formatProofForContract(proof) {
 }
 
 /**
- * Generate a cryptographically random salt suitable for ZKP.
- * @returns {string}  Hex-encoded 31-byte (248-bit) random value.
+ * Generate a cryptographically random 248-bit salt (BN128 field safe).
+ * @returns {string} 0x-prefixed hex string
  */
 export function generateSalt() {
   const array = new Uint8Array(31);

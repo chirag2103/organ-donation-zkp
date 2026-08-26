@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "./ZKPVerifier.sol";
+import "./IZKPVerifier.sol";
 import "./RoleRegistry.sol";
 
 /**
@@ -19,7 +19,7 @@ import "./RoleRegistry.sol";
 contract PFEKeyIssuer {
 
     // ── Dependencies ──────────────────────────────────────────────────────
-    ZKPVerifier   public immutable zkpVerifier;
+    IZKPVerifier  public immutable zkpVerifier;
     RoleRegistry  public immutable roleRegistry;
 
     // ── Constants ─────────────────────────────────────────────────────────
@@ -57,7 +57,7 @@ contract PFEKeyIssuer {
     constructor(address _zkpVerifier, address _roleRegistry) {
         require(_zkpVerifier != address(0), "PFEKeyIssuer: zero zkp address");
         require(_roleRegistry != address(0), "PFEKeyIssuer: zero registry address");
-        zkpVerifier  = ZKPVerifier(_zkpVerifier);
+        zkpVerifier  = IZKPVerifier(_zkpVerifier);
         roleRegistry = RoleRegistry(_roleRegistry);
     }
 

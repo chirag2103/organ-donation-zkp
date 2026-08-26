@@ -2,6 +2,7 @@ pragma circom 2.0.0;
 
 include "circomlib/circuits/poseidon.circom";
 include "circomlib/circuits/comparators.circom";
+include "circomlib/circuits/mux1.circom";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Merkle Proof component (binary Merkle tree, Poseidon hash at each level)
@@ -13,26 +14,39 @@ template MerkleProof(levels) {
     signal output root;
 
     component hashers[levels];
+    component leftMux[levels];
+    component rightMux[levels];
+
     signal levelHashes[levels + 1];
+
     levelHashes[0] <== leaf;
 
     for (var i = 0; i < levels; i++) {
+        // Select which value goes on the left/right side.
+        //
+        // pathIndices[i] = 0:
+        //   left  = levelHashes[i]
+        //   right = pathElements[i]
+        //
+        // pathIndices[i] = 1:
+        //   left  = pathElements[i]
+        //   right = levelHashes[i]
+
+        leftMux[i] = Mux1();
+        rightMux[i] = Mux1();
+
+        leftMux[i].c[0] <== levelHashes[i];
+        leftMux[i].c[1] <== pathElements[i];
+        leftMux[i].s <== pathIndices[i];
+
+        rightMux[i].c[0] <== pathElements[i];
+        rightMux[i].c[1] <== levelHashes[i];
+        rightMux[i].s <== pathIndices[i];
+
         hashers[i] = Poseidon(2);
 
-        // If pathIndices[i] == 0 → left child (current hash is left)
-        // If pathIndices[i] == 1 → right child (current hash is right)
-        // left  = levelHashes[i] * (1 - pathIndices[i]) + pathElements[i] * pathIndices[i]
-        // right = pathElements[i] * (1 - pathIndices[i]) + levelHashes[i] * pathIndices[i]
-        var isRight = pathIndices[i];
-
-        signal left[levels];
-        signal right[levels];
-
-        left[i]  <== levelHashes[i] * (1 - isRight) + pathElements[i] * isRight;
-        right[i] <== pathElements[i] * (1 - isRight) + levelHashes[i] * isRight;
-
-        hashers[i].inputs[0] <== left[i];
-        hashers[i].inputs[1] <== right[i];
+        hashers[i].inputs[0] <== leftMux[i].out;
+        hashers[i].inputs[1] <== rightMux[i].out;
 
         levelHashes[i + 1] <== hashers[i].out;
     }

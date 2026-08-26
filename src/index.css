@@ -850,3 +850,100 @@ body {
   .score-number { font-size: 2.5rem; }
   .app-header { flex-direction: column; align-items: flex-start; }
 }
+
+/* -- RoleAuth — Step log & new UI elements ---------------------------------- */
+.credential-explainer {
+  display: flex;
+  gap: .6rem;
+  align-items: flex-start;
+  background: rgba(99,102,241,.08);
+  border: 1px solid rgba(99,102,241,.2);
+  border-radius: 8px;
+  padding: .7rem .9rem;
+  margin-bottom: .75rem;
+  font-size: .84rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.credential-explainer .info-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: .1rem; }
+
+.label-badge {
+  display: inline-block;
+  font-size: .68rem;
+  font-weight: 600;
+  background: rgba(16,185,129,.15);
+  color: #10b981;
+  border-radius: 4px;
+  padding: .1rem .45rem;
+  margin-left: .6rem;
+  letter-spacing: .03em;
+  vertical-align: middle;
+}
+
+.derived-preview {
+  margin-top: .6rem;
+  padding: .6rem .8rem;
+  background: rgba(15,23,42,.4);
+  border: 1px solid rgba(99,102,241,.2);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: .3rem;
+}
+.derived-label  { font-size: .78rem; color: var(--text-secondary); }
+.derived-hash   { font-family: var(--font-mono); font-size: .82rem; color: #a5b4fc; word-break: break-all; }
+.derived-note   { font-size: .72rem; color: var(--text-muted, #6b7280); }
+
+.step-log {
+  margin: .75rem 0;
+  padding: .6rem .9rem;
+  background: rgba(0,0,0,.3);
+  border: 1px solid rgba(255,255,255,.06);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: .3rem;
+}
+.step-log-line {
+  font-size: .8rem;
+  font-family: var(--font-mono);
+  color: #86efac;
+  padding: .1rem 0;
+  border-bottom: 1px solid rgba(255,255,255,.04);
+}
+.step-log-line:last-child { border-bottom: none; }
+
+.step-indicator {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  font-size: .9rem;
+  color: var(--text-secondary);
+  margin: .5rem 0;
+  padding: .5rem .75rem;
+  background: rgba(99,102,241,.08);
+  border-radius: 8px;
+}
+
+.wallet-addr-label { font-size: .78rem; color: var(--text-secondary); margin-right: .3rem; }
+.wallet-privacy-note {
+  font-size: .75rem;
+  color: #10b981;
+  margin-left: .5rem;
+  background: rgba(16,185,129,.08);
+  padding: .2rem .5rem;
+  border-radius: 5px;
+}
+.wallet-cta { display: flex; flex-direction: column; gap: .5rem; }
+.input-icon--btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 0 .25rem;
+  opacity: .7;
+  transition: opacity .2s;
+}
+.input-icon--btn:hover { opacity: 1; }
+.success-note { font-size: .85rem; color: var(--text-secondary); margin: .25rem 0 .75rem; }
+.btn-sm { padding: .4rem 1rem; font-size: .85rem; }
