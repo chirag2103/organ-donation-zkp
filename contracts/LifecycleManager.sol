@@ -36,7 +36,7 @@ contract LifecycleManager {
         RevocationStatus status;
         address          requestedBy;
         uint256          requestedAt;
-        bytes32          cid;
+        string           cid;
         uint256          executedAt;
     }
 
@@ -58,7 +58,7 @@ contract LifecycleManager {
     );
     event RevocationExecuted(
         uint256 indexed donorId,
-        bytes32         cid,
+        string          cid,
         uint256         ts
     );
     event AutoRevocationScheduled(
@@ -120,9 +120,9 @@ contract LifecycleManager {
      * @notice Execute a revocation: deactivates the on-chain record and emits
      *         RevocationExecuted (which the backend listens to for IPFS unpinning).
      * @param donorId  Donor record ID.
-     * @param cid      The IPFS CID bytes32-encoded (provided by backend after lookup).
+     * @param cid      The IPFS CID string (provided by backend after lookup).
      */
-    function executeRevocation(uint256 donorId, bytes32 cid)
+    function executeRevocation(uint256 donorId, string calldata cid)
         external
         requireRevocationPermission
     {
@@ -194,7 +194,7 @@ contract LifecycleManager {
                 rec.status     = RevocationStatus.Executed;
                 rec.executedAt = block.timestamp;
                 // cid is empty here; backend resolves the real CID from donorId
-                bytes32 placeholderCid = keccak256(abi.encodePacked("scheduled", s.donorId));
+                string memory placeholderCid = "scheduled";
                 rec.cid = placeholderCid;
 
                 // Deactivate record (may revert if already inactive — safe to ignore)

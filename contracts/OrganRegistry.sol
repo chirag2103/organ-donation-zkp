@@ -28,7 +28,7 @@ contract OrganRegistry {
 
     // ── Data structures ───────────────────────────────────────────────────
     struct DonorRecord {
-        bytes32 encCID;          // keccak256 of the IPFS CID string
+        string  encCID;          // IPFS CIDv1 string (e.g. Qm... or bafy...)
         uint8   bloodType;       // 0=A+, 1=A-, 2=B+, 3=B-, 4=AB+, 5=AB-, 6=O+, 7=O-
         bytes32 hlaRoot;         // Merkle root of HLA antigen set (off-chain)
         address registeredBy;    // Pseudonymous address of registering party
@@ -37,7 +37,7 @@ contract OrganRegistry {
     }
 
     struct RecipientRecord {
-        bytes32 encCID;
+        string  encCID;
         uint8   bloodType;
         bytes32 hlaRoot;
         address registeredBy;
@@ -55,12 +55,12 @@ contract OrganRegistry {
     // ── Events ────────────────────────────────────────────────────────────
     event DonorRegistered(
         uint256 indexed id,
-        bytes32         encCID,
+        string          encCID,
         address         registeredBy
     );
     event RecipientRegistered(
         uint256 indexed id,
-        bytes32         encCID,
+        string          encCID,
         address         registeredBy
     );
     event DonorDeactivated(uint256 indexed id, address deactivatedBy);
@@ -74,6 +74,7 @@ contract OrganRegistry {
     error RecipientNotFound(uint256 id);
     error AlreadyInactive(uint256 id);
     error ZeroEncCID();
+    error NoViewPermission();
 
     // ── Modifiers ─────────────────────────────────────────────────────────
 
@@ -116,18 +117,18 @@ contract OrganRegistry {
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * @notice Register a new donor record with encrypted IPFS CID commitment.
-     * @param encCID    keccak256(ipfs_cid_string) — binds record to IPFS content.
+     * @notice Register a new donor record with encrypted IPFS CID string.
+     * @param encCID    ipfs_cid_string — binds record to IPFS content.
      * @param bloodType Blood type code (0–7).
      * @param hlaRoot   Merkle root of HLA antigen matches (computed off-chain).
      * @return id       Assigned donor ID.
      */
     function registerDonor(
-        bytes32 encCID,
+        string calldata encCID,
         uint8   bloodType,
         bytes32 hlaRoot
     ) external onlyValidKey returns (uint256 id) {
-        if (encCID == bytes32(0)) revert ZeroEncCID();
+        if (bytes(encCID).length == 0) revert ZeroEncCID();
         id = donorCount++;
         donors[id] = DonorRecord({
             encCID:       encCID,
@@ -154,12 +155,12 @@ contract OrganRegistry {
     }
 
     /**
-     * @notice Returns the encrypted CID commitment for a donor.
+     * @notice Returns the encrypted CID string for a donor.
      */
     function getEncryptedCID(uint256 donorId)
         external
         view
-        returns (bytes32)
+        returns (string memory)
     {
         if (donors[donorId].ts == 0) revert DonorNotFound(donorId);
         return donors[donorId].encCID;
@@ -171,19 +172,19 @@ contract OrganRegistry {
 
     /**
      * @notice Register a new recipient record.
-     * @param encCID    keccak256(ipfs_cid_string).
+     * @param encCID    ipfs_cid_string.
      * @param bloodType Blood type code (0–7).
      * @param hlaRoot   HLA Merkle root.
      * @param urgency   0=standard, 1=urgent, 2=emergency.
      * @return id       Assigned recipient ID.
      */
     function registerRecipient(
-        bytes32 encCID,
+        string calldata encCID,
         uint8   bloodType,
         bytes32 hlaRoot,
         uint8   urgency
     ) external onlyValidKey returns (uint256 id) {
-        if (encCID == bytes32(0)) revert ZeroEncCID();
+        if (bytes(encCID).length == 0) revert ZeroEncCID();
         require(urgency <= 2, "OrganRegistry: invalid urgency");
         id = recipientCount++;
         recipients[id] = RecipientRecord({
@@ -217,9 +218,40 @@ contract OrganRegistry {
     function getRecipientEncryptedCID(uint256 recipientId)
         external
         view
-        returns (bytes32)
+        returns (string memory)
     {
         if (recipients[recipientId].ts == 0) revert RecipientNotFound(recipientId);
         return recipients[recipientId].encCID;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Matching operations
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * @notice Retrieves combined encoded records for off-chain PFE evaluation.
+     *         Caller must hold a valid key with viewScore (bit0) permission.
+     */
+    function getCompatibilityScore(uint256 donorId, uint256 recipientId)
+        external
+        view
+        onlyValidKey
+        returns (bytes memory encryptedScore)
+    {
+        bool hasViewScore = pfeKeyIssuer.hasPermission(msg.sender, 0); // bit0
+        if (!hasViewScore) revert NoViewPermission();
+
+        if (donors[donorId].ts == 0 || !donors[donorId].active) revert DonorNotFound(donorId);
+        if (recipients[recipientId].ts == 0 || !recipients[recipientId].active) revert RecipientNotFound(recipientId);
+
+        return abi.encode(
+            donors[donorId].encCID,
+            recipients[recipientId].encCID,
+            donors[donorId].bloodType,
+            recipients[recipientId].bloodType,
+            donors[donorId].hlaRoot,
+            recipients[recipientId].hlaRoot,
+            recipients[recipientId].urgency
+        );
     }
 }

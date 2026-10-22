@@ -10,7 +10,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { ethers } from 'ethers';
 import RoleAuth          from './components/RoleAuth';
-import DonorRegister     from './components/DonorRegister';
+import RegisterPanel     from './components/RegisterPanel';
 import CompatibilityScore from './components/CompatibilityScore';
 import LifecyclePanel    from './components/LifecyclePanel';
 
@@ -24,7 +24,7 @@ try {
 
 const TABS = [
   { id: 'auth',     label: '🔐 Role Auth',    desc: 'ZKP Authentication' },
-  { id: 'register', label: '🫀 Register',      desc: 'Donor Registration' },
+  { id: 'register', label: '🫀 Register',      desc: 'Donor / Recipient Registration' },
   { id: 'score',    label: '📊 Score',         desc: 'Compatibility' },
   { id: 'lifecycle',label: '⚖️ Lifecycle',     desc: 'GDPR Article 17' },
 ];
@@ -162,7 +162,7 @@ export default function App() {
           />
         )}
         {activeTab === 'register' && (
-          <DonorRegister
+          <RegisterPanel
             deployments={deployments}
             keyInfo={keyInfo}
           />

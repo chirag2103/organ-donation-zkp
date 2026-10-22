@@ -18,7 +18,7 @@ describe('LifecycleManager', function () {
   const MERKLE_ROOT_SURG  = '0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB';
   const MERKLE_ROOT_MATCH = '0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC';
 
-  const ENC_CID  = ethers.keccak256(ethers.toUtf8Bytes('bafytest'));
+  const ENC_CID  = 'bafytest';
   const HLA_ROOT = ethers.keccak256(ethers.toUtf8Bytes('hla'));
   const DUMMY_A  = ['1', '2'];
   const DUMMY_B  = [['1', '2'], ['3', '4']];
@@ -124,7 +124,7 @@ describe('LifecycleManager', function () {
     it('✓ owner can schedule auto revocation', async function () {
       // Register a second donor
       const tx2  = await organRegistry.connect(surgeon).registerDonor(
-        ethers.keccak256(ethers.toUtf8Bytes('cid2')), 1, HLA_ROOT
+        'cid2', 1, HLA_ROOT
       );
       const rec2 = await tx2.wait();
       const iface = organRegistry.interface;

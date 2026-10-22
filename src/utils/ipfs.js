@@ -30,6 +30,25 @@ export async function uploadToIPFS(encryptedRecord, donorId) {
 }
 
 /**
+ * Download a donor/recipient's raw PFE ciphertext bundle from IPFS.
+ * Used by CompatibilityScore to score real registered records instead of
+ * demo placeholder ciphertexts.
+ *
+ * @param {string} cid  IPFS CID string (from OrganRegistry's encCID field).
+ * @returns {Promise<{ ct1: string, ct2: string, ct3: string, ts: number }>}
+ */
+export async function downloadFromIPFS(cid) {
+  const response = await fetch(`${API_BASE}/api/ipfs/download/${encodeURIComponent(cid)}`);
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(`IPFS download failed: ${err.error || response.statusText}`);
+  }
+
+  return response.json();
+}
+
+/**
  * Unpin a record from IPFS (GDPR Article 17 erasure).
  *
  * @param {string} cid  IPFS CID to unpin.

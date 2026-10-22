@@ -152,8 +152,9 @@ app.post('/api/zkp/generate-and-register', async (req, res) => {
 // ── PFE encrypt endpoint ──────────────────────────────────────────────────
 /**
  * POST /api/pfe/encrypt
- * Body: { bloodType (0–1), hlaScore (0.0–1.0), urgency (0.0–1.0) }
- * Response: { ciphertexts: [base64, base64, base64], encryptedRecord: base64 }
+ * Body: { bloodType (0-7 index, see BLOOD_TYPES in DonorRegister.jsx),
+ *         hlaScore (0.0–1.0), urgency (0.0–1.0) }
+ * Response: { ciphertexts: { ctIsA, ctIsB, ctIsRhPos, ctHla, ctUrgency }, encryptedRecord }
  */
 app.post('/api/pfe/encrypt', async (req, res) => {
   const { bloodType, hlaScore, urgency, roleId, keyCommitment } = req.body;
@@ -161,27 +162,31 @@ app.post('/api/pfe/encrypt', async (req, res) => {
   if (bloodType === undefined || hlaScore === undefined || urgency === undefined) {
     return res.status(400).json({ error: 'Missing bloodType, hlaScore, or urgency' });
   }
+  if (!Number.isInteger(bloodType) || bloodType < 0 || bloodType > 7) {
+    return res.status(400).json({ error: 'bloodType must be an integer 0-7' });
+  }
   if (typeof hlaScore !== 'number' || hlaScore < 0 || hlaScore > 1) {
     return res.status(400).json({ error: 'hlaScore must be 0.0–1.0' });
   }
   if (typeof urgency !== 'number' || urgency < 0 || urgency > 1) {
     return res.status(400).json({ error: 'urgency must be 0.0–1.0' });
   }
-  // bloodType is 0 or 1 for compatibility (binary)
-  const btNorm = bloodType > 0 ? 1 : 0;
 
   try {
-    const { ct1, ct2, ct3 } = pfeService.encryptAttributes(btNorm, hlaScore, urgency);
+    // bloodType is passed through as the real 0-7 category — pfeService
+    // decomposes it into (isA, isB, isRhPos) for real ABO/Rh compatibility
+    // scoring, rather than collapsing it to a single "is it A+" bit.
+    const ciphertexts = pfeService.encryptAttributes(bloodType, hlaScore, urgency);
 
     // Derive role key if provided (for AES wrapping)
     let encryptedRecord = null;
     if (roleId !== undefined && keyCommitment) {
       const roleKey     = await pfeService.issueRoleScopedKey(roleId, keyCommitment);
-      const bundle      = JSON.stringify({ ct1, ct2, ct3, ts: Date.now() });
+      const bundle      = JSON.stringify({ ...ciphertexts, ts: Date.now() });
       encryptedRecord   = pfeService.encryptWithRoleKey(bundle, roleKey);
     }
 
-    res.json({ ciphertexts: [ct1, ct2, ct3], encryptedRecord });
+    res.json({ ciphertexts, encryptedRecord });
   } catch (err) {
     console.error('[PFE] Encrypt error:', err.message);
     res.status(500).json({ error: 'Encryption failed', detail: err.message });
@@ -191,18 +196,19 @@ app.post('/api/pfe/encrypt', async (req, res) => {
 // ── PFE score endpoint ────────────────────────────────────────────────────
 /**
  * POST /api/pfe/score
- * Body: { ct1, ct2, ct3, roleId, keyCommitment }
+ * Body: { donorCts, recipCts, W }
  * Response: { encryptedScore: base64 }
  */
 app.post('/api/pfe/score', async (req, res) => {
-  const { ct1, ct2, ct3, roleId, keyCommitment } = req.body;
+  const { donorCts, recipCts, W } = req.body;
 
-  if (!ct1 || !ct2 || !ct3) {
-    return res.status(400).json({ error: 'Missing ciphertexts ct1, ct2, ct3' });
+  if (!donorCts || !recipCts) {
+    return res.status(400).json({ error: 'Missing donorCts or recipCts' });
   }
 
   try {
-    const encryptedScore = pfeService.computeCompatibilityScore(ct1, ct2, ct3);
+    const weight = W !== undefined ? W : 100;
+    const encryptedScore = pfeService.computeCompatibilityScore(donorCts, recipCts, weight);
     res.json({ encryptedScore });
   } catch (err) {
     console.error('[PFE] Score error:', err.message);
@@ -258,6 +264,29 @@ app.post('/api/ipfs/upload', async (req, res) => {
   } catch (err) {
     console.error('[IPFS] Upload error:', err.message);
     res.status(500).json({ error: 'IPFS upload failed', detail: err.message });
+  }
+});
+
+// ── IPFS download endpoint (raw ciphertext bundle, no AES layer) ──────────
+/**
+ * GET /api/ipfs/download/:cid
+ * Response: { ct1: base64, ct2: base64, ct3: base64, ts: number }
+ *
+ * Fetches the PFE ciphertext bundle a donor/recipient registration uploaded
+ * (see DonorRegister.jsx / RecipientRegister.jsx) so CompatibilityScore can
+ * compute a real homomorphic score instead of demo placeholder ciphertexts.
+ */
+app.get('/api/ipfs/download/:cid', async (req, res) => {
+  const { cid } = req.params;
+  if (!cid) return res.status(400).json({ error: 'Missing CID' });
+
+  try {
+    const buf = await ipfsService.downloadRawRecord(cid);
+    const bundle = JSON.parse(buf.toString('utf8'));
+    res.json(bundle);
+  } catch (err) {
+    console.error('[IPFS] Download error:', err.message);
+    res.status(500).json({ error: 'IPFS download failed', detail: err.message });
   }
 });
 
@@ -393,12 +422,9 @@ async function start() {
     // Start blockchain event listener if deployment addresses exist
     const deployments = loadDeployments();
     if (deployments && deployments.LifecycleManager) {
-      const provider = new ethers.JsonRpcProvider(
-        process.env.RPC_URL || 'http://127.0.0.1:8545'
-      );
       await ipfsService.startRevocationListener(
-        provider,
-        deployments.LifecycleManager
+        deployments.LifecycleManager,
+        process.env.RPC_URL || 'http://127.0.0.1:8545'
       );
     } else {
       console.warn('[SERVER] No deployment addresses found — revocation listener inactive');

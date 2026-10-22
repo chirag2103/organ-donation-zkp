@@ -13,7 +13,7 @@ describe('OrganRegistry', function () {
   const ROLE_DOCTOR = 0;
   const MERKLE_ROOT = '0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
 
-  const ENC_CID   = ethers.keccak256(ethers.toUtf8Bytes('bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi'));
+  const ENC_CID   = 'bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi';
   const HLA_ROOT  = ethers.keccak256(ethers.toUtf8Bytes('hla-root-test'));
   const BLOOD_TYPE = 0; // A+
 
@@ -119,7 +119,7 @@ describe('OrganRegistry', function () {
       );
 
       await expect(
-        org2.connect(validUser).registerDonor(ethers.ZeroHash, BLOOD_TYPE, HLA_ROOT)
+        org2.connect(validUser).registerDonor('', BLOOD_TYPE, HLA_ROOT)
       ).to.be.revertedWithCustomError(org2, 'ZeroEncCID');
     });
   });
@@ -148,6 +148,83 @@ describe('OrganRegistry', function () {
       await expect(
         organRegistry.connect(lifecycle).deactivateDonor(9999)
       ).to.be.revertedWithCustomError(organRegistry, 'DonorNotFound');
+    });
+  });
+
+  describe('getCompatibilityScore()', function () {
+    let orgReg, mv, pfe, pfeKeyIssuerAddr, roleReg;
+
+    before(async function () {
+      // Need fresh instances
+      const MockVerifier = await ethers.getContractFactory('MockZKPVerifier');
+      mv = await MockVerifier.deploy(true);
+      await mv.waitForDeployment();
+
+      const RoleRegistry = await ethers.getContractFactory('RoleRegistry');
+      roleReg = await RoleRegistry.deploy();
+      await roleReg.waitForDeployment();
+      await roleReg.registerCredentialRoot(ROLE_DOCTOR, MERKLE_ROOT);
+      
+      const PFE = await ethers.getContractFactory('PFEKeyIssuer');
+      pfe = await PFE.deploy(await mv.getAddress(), await roleReg.getAddress());
+      await pfe.waitForDeployment();
+      pfeKeyIssuerAddr = await pfe.getAddress();
+
+      const OrgReg = await ethers.getContractFactory('OrganRegistry');
+      orgReg = await OrgReg.deploy(pfeKeyIssuerAddr);
+      await orgReg.waitForDeployment();
+
+      // Issue doctor key (has bit0 viewScore)
+      await pfe.connect(validUser).verifyAndIssueKey(
+        ROLE_DOCTOR, DUMMY_A, DUMMY_B, DUMMY_C,
+        [MERKLE_ROOT, ROLE_DOCTOR, '888', '999']
+      );
+
+      // Register donor and recipient
+      await orgReg.connect(validUser).registerDonor('donor_cid', 0, HLA_ROOT);
+      await orgReg.connect(validUser).registerRecipient('recip_cid', 0, HLA_ROOT, 1);
+    });
+
+    it('✓ returns ABI-encoded data for active donor and recipient', async function () {
+      const encoded = await orgReg.connect(validUser).getCompatibilityScore(0, 0);
+      
+      // Decode it
+      const decoded = ethers.AbiCoder.defaultAbiCoder().decode(
+        ['string', 'string', 'uint8', 'uint8', 'bytes32', 'bytes32', 'uint8'],
+        encoded
+      );
+
+      expect(decoded[0]).to.equal('donor_cid');
+      expect(decoded[1]).to.equal('recip_cid');
+      expect(Number(decoded[2])).to.equal(0);
+      expect(Number(decoded[3])).to.equal(0);
+      expect(decoded[4]).to.equal(HLA_ROOT);
+      expect(decoded[5]).to.equal(HLA_ROOT);
+      expect(Number(decoded[6])).to.equal(1); // urgency
+    });
+
+    it('✓ caller without bit0 (viewScore) cannot call', async function () {
+      // Issue a key for a role without bit0 (e.g. TRANSPORTER, roleId=4)
+      const ROLE_TRANSPORTER = 4;
+      await roleReg.registerCredentialRoot(ROLE_TRANSPORTER, MERKLE_ROOT);
+      await pfe.connect(invalidUser).verifyAndIssueKey(
+        ROLE_TRANSPORTER, DUMMY_A, DUMMY_B, DUMMY_C,
+        [MERKLE_ROOT, ROLE_TRANSPORTER, '111', '222']
+      );
+
+      await expect(
+        orgReg.connect(invalidUser).getCompatibilityScore(0, 0)
+      ).to.be.revertedWithCustomError(orgReg, 'NoViewPermission');
+    });
+
+    it('✓ reverts if donor or recipient is inactive', async function () {
+      // set up lifecycle and deactivate donor
+      await orgReg.setLifecycleManager(lifecycle.address);
+      await orgReg.connect(lifecycle).deactivateDonor(0);
+
+      await expect(
+        orgReg.connect(validUser).getCompatibilityScore(0, 0)
+      ).to.be.revertedWithCustomError(orgReg, 'DonorNotFound');
     });
   });
 });

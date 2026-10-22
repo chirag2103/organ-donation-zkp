@@ -35,8 +35,14 @@ async function initIPFS(apiUrl = 'http://127.0.0.1:5001') {
 async function checkIPFS() {
   try {
     if (!ipfsClient) return false;
-    const id = await ipfsClient.id();
-    return Boolean(id && id.id);
+    // Use version() rather than id() — newer Kubo daemons advertise
+    // webrtc-direct multiaddrs in their `id` response that this version of
+    // ipfs-http-client's multiaddr parser doesn't recognise ("no protocol
+    // with name: webrtc-direct"), which makes id() throw even though the
+    // daemon (and add()/cat()) work fine. version() avoids multiaddr
+    // parsing entirely and is a lighter connectivity check anyway.
+    const v = await ipfsClient.version();
+    return Boolean(v && v.version);
   } catch {
     return false;
   }
@@ -64,7 +70,33 @@ async function uploadEncryptedRecord(encryptedBuffer) {
 }
 
 /**
- * Download and decrypt an encrypted record from IPFS.
+ * Download a record's raw bytes from IPFS, with no AES unwrapping.
+ *
+ * Used for donor/recipient PFE ciphertext bundles ({ ct1, ct2, ct3, ts }),
+ * which are uploaded as plain JSON (see registerDonor/registerRecipient
+ * flows) rather than AES-wrapped: their real confidentiality comes from the
+ * SEAL BFV homomorphic encryption of ct1/ct2/ct3 themselves (unreadable
+ * without the server's in-memory SEAL secret key), and access to *which*
+ * CID to fetch is already gated on-chain via OrganRegistry's
+ * onlyValidKey + hasPermission(viewScore) checks — so an extra ephemeral,
+ * per-session AES layer here would only make records unreadable across
+ * sessions/roles without adding any real access control of its own.
+ *
+ * @param {string} cidStr  IPFS CID string.
+ * @returns {Promise<Buffer>}  Raw bytes as uploaded.
+ */
+async function downloadRawRecord(cidStr) {
+  if (!ipfsClient) throw new Error('IPFS not initialised.');
+
+  const chunks = [];
+  for await (const chunk of ipfsClient.cat(cidStr)) {
+    chunks.push(Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks);
+}
+
+/**
+ * Download and decrypt an AES-wrapped encrypted record from IPFS.
  *
  * @param {string} cidStr   IPFS CID string.
  * @param {Buffer} roleKey  32-byte AES-256 role key for decryption.
@@ -128,46 +160,30 @@ async function unpinRecord(cidStr) {
 }
 
 // ── Blockchain event listener ─────────────────────────────────────────────────
-
-// RevocationExecuted(uint256 indexed donorId, bytes32 cid, uint256 ts)
-const REVOCATION_EXECUTED_ABI = [
-  'event RevocationExecuted(uint256 indexed donorId, bytes32 cid, uint256 ts)',
-];
-
 let revocationListenerActive = false;
 
 /**
- * Start listening for RevocationExecuted events from LifecycleManager.
- * On each event, automatically unpin the corresponding IPFS record.
- *
- * @param {ethers.Provider} provider              ethers.js provider.
- * @param {string}          lifecycleManagerAddr  LifecycleManager contract address.
+ * Start listening for RevocationExecuted events to automatically unpin data.
+ * @param {string} lifecycleManagerAddr
+ * @param {string} rpcUrl
  */
-async function startRevocationListener(provider, lifecycleManagerAddr) {
-  if (revocationListenerActive) {
-    console.log('[IPFS] Revocation listener already active');
-    return;
-  }
+function startRevocationListener(lifecycleManagerAddr, rpcUrl) {
+  if (revocationListenerActive) return;
 
-  const iface    = new ethers.Interface(REVOCATION_EXECUTED_ABI);
-  const contract = new ethers.Contract(
-    lifecycleManagerAddr,
-    REVOCATION_EXECUTED_ABI,
-    provider
-  );
+  const { ethers } = require('ethers');
+  const provider = new ethers.JsonRpcProvider(rpcUrl);
 
-  contract.on('RevocationExecuted', async (donorId, cidBytes32, ts, event) => {
-    // Convert bytes32 CID to a readable CID string
-    // The CID is stored as bytes32 keccak hash — backend must look up
-    // the actual CID string from its own record (kept in memory or DB)
-    const cidHex = ethers.hexlify(cidBytes32);
+  const abi = [
+    'event RevocationExecuted(uint256 indexed donorId, string cid, uint256 ts)'
+  ];
+  const lifecycleManager = new ethers.Contract(lifecycleManagerAddr, abi, provider);
+
+  lifecycleManager.on('RevocationExecuted', async (donorId, cidHex, ts) => {
     const donorIdNum = donorId.toString();
-
-    console.log('[REVOCATION] Event received — donorId: %s, cid: %s, ts: %s',
-      donorIdNum, cidHex, new Date(Number(ts) * 1000).toISOString());
+    console.log('[IPFS] Detected RevocationExecuted for donor %s', donorIdNum);
 
     // Look up the actual IPFS CID from in-memory map (populated at upload time)
-    const actualCid = cidRegistry.get(donorIdNum) || cidRegistry.get(cidHex);
+    const actualCid = cidRegistry.get(donorIdNum) || cidRegistry.get(cidHex) || cidHex;
 
     if (actualCid) {
       const result = await unpinRecord(actualCid);
@@ -213,6 +229,7 @@ module.exports = {
   checkIPFS,
   uploadEncryptedRecord,
   downloadRecord,
+  downloadRawRecord,
   unpinRecord,
   startRevocationListener,
   registerCID,

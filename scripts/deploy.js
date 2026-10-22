@@ -11,7 +11,8 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-const { ethers } = require('hardhat');
+const hre        = require('hardhat');
+const { ethers } = hre;
 const path       = require('path');
 const fs         = require('fs');
 
@@ -37,10 +38,20 @@ async function main() {
   console.log('  Balance: ', ethers.formatEther(balance), 'ETH');
   console.log('───────────────────────────────────────────────────\n');
 
-  // ── Step 1: Deploy ZKPVerifier ────────────────────────────────────────────
-  console.log('1. Deploying ZKPVerifier...');
+  // ── Step 0: Deploy Groth16Verifier (real BN128 pairing verifier) ──────────
+  console.log('0. Deploying Groth16Verifier...');
+  const Groth16Verifier = await ethers.getContractFactory(
+    'contracts/Groth16Verifier.sol:Groth16Verifier'
+  );
+  const groth16Verifier = await Groth16Verifier.deploy();
+  await groth16Verifier.waitForDeployment();
+  const groth16Addr = await groth16Verifier.getAddress();
+  console.log('   ✓ Groth16Verifier deployed at:', groth16Addr);
+
+  // ── Step 1: Deploy ZKPVerifier (wraps the real Groth16Verifier) ───────────
+  console.log('\n1. Deploying ZKPVerifier...');
   const ZKPVerifier = await ethers.getContractFactory('ZKPVerifier');
-  const zkpVerifier = await ZKPVerifier.deploy(ethers.ZeroAddress);
+  const zkpVerifier = await ZKPVerifier.deploy(groth16Addr);
   await zkpVerifier.waitForDeployment();
   const zkpAddr = await zkpVerifier.getAddress();
   console.log('   ✓ ZKPVerifier deployed at:', zkpAddr);
@@ -96,39 +107,66 @@ async function main() {
 
   // ── Step 8: Export deployment addresses ───────────────────────────────────
   console.log('\n8. Exporting deployment addresses...');
+  const networkName = hre.network.name; // e.g. 'localhost', 'sepolia', 'ganache'
+  const network      = await ethers.provider.getNetwork();
+  const isSepolia    = networkName === 'sepolia';
+
   const deploymentData = {
+    network:          networkName,
+    chainId:          Number(network.chainId),
+    Groth16Verifier:  groth16Addr,
     ZKPVerifier:      zkpAddr,
     RoleRegistry:     roleRegAddr,
     PFEKeyIssuer:     pfeAddr,
     OrganRegistry:    organAddr,
     LifecycleManager: lifecycleAddr,
     deployer:         deployer.address,
-    network:          (await ethers.provider.getNetwork()).name,
     deployedAt:       new Date().toISOString(),
     testMerkleRoots:  TEST_MERKLE_ROOTS,
+    ...(isSepolia && {
+      etherscanLinks: {
+        Groth16Verifier:  `https://sepolia.etherscan.io/address/${groth16Addr}`,
+        ZKPVerifier:      `https://sepolia.etherscan.io/address/${zkpAddr}`,
+        RoleRegistry:     `https://sepolia.etherscan.io/address/${roleRegAddr}`,
+        PFEKeyIssuer:     `https://sepolia.etherscan.io/address/${pfeAddr}`,
+        OrganRegistry:    `https://sepolia.etherscan.io/address/${organAddr}`,
+        LifecycleManager: `https://sepolia.etherscan.io/address/${lifecycleAddr}`,
+      },
+    }),
   };
 
   const outDir  = path.join(__dirname, '..', 'deployments');
-  const outPath = path.join(outDir, 'localhost.json');
+  const outPath = path.join(outDir, `${networkName}.json`);
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
   fs.writeFileSync(outPath, JSON.stringify(deploymentData, null, 2));
 
-  // Also copy to src for frontend use
+  // Also copy to src for frontend use (always the most recently deployed network)
   const srcDeployPath = path.join(__dirname, '..', 'src', 'deployments.json');
   fs.writeFileSync(srcDeployPath, JSON.stringify(deploymentData, null, 2));
 
-  console.log('   ✓ Addresses written to deployments/localhost.json');
+  console.log(`   ✓ Addresses written to deployments/${networkName}.json`);
   console.log('   ✓ Addresses copied to src/deployments.json');
 
   console.log('\n═══════════════════════════════════════════════════');
   console.log('  Deployment complete!');
   console.log('═══════════════════════════════════════════════════');
+  console.log('  Network         :', networkName);
+  console.log('  Groth16Verifier :', groth16Addr);
   console.log('  ZKPVerifier     :', zkpAddr);
   console.log('  RoleRegistry    :', roleRegAddr);
   console.log('  PFEKeyIssuer    :', pfeAddr);
   console.log('  OrganRegistry   :', organAddr);
   console.log('  LifecycleManager:', lifecycleAddr);
   console.log('═══════════════════════════════════════════════════\n');
+  if (isSepolia) {
+    console.log('  Next step — verify contracts on Etherscan:');
+    console.log(`    npx hardhat verify --network sepolia ${groth16Addr}`);
+    console.log(`    npx hardhat verify --network sepolia ${zkpAddr} ${groth16Addr}`);
+    console.log(`    npx hardhat verify --network sepolia ${roleRegAddr}`);
+    console.log(`    npx hardhat verify --network sepolia ${pfeAddr} ${zkpAddr} ${roleRegAddr}`);
+    console.log(`    npx hardhat verify --network sepolia ${organAddr} ${pfeAddr}`);
+    console.log(`    npx hardhat verify --network sepolia ${lifecycleAddr} ${organAddr} ${pfeAddr}\n`);
+  }
 }
 
 main()

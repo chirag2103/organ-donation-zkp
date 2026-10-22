@@ -41,6 +41,10 @@ const PFEKEY_ISSUER_ABI = [
   'function isKeyValid(address user) view returns (bool valid, uint8 roleId, uint256 expiresAt)',
 ];
 
+const ROLE_REGISTRY_ABI = [
+  'function getPermissions(uint8 roleId) view returns (uint256)',
+];
+
 /**
  * Derive a BN128-field-compatible credential scalar from a passphrase.
  * credential = keccak256("zkp-credential:role<N>:<passphrase>") mod PRIME_R
@@ -161,7 +165,18 @@ export default function RoleAuth({ deployments, onKeyIssued }) {
         expiresAt    = Number(parsed.args.expiresAt);
       }
 
-      const info = { roleId, commitment, expiresAt, account };
+      // Fetch this role's permission bitmask so downstream tabs (e.g. the
+      // GDPR revocation button in LifecyclePanel) can gate on it — this is
+      // a read-only call, no signer/MetaMask popup required.
+      let permissions = 0;
+      try {
+        const roleRegistry = new ethers.Contract(deployments.RoleRegistry, ROLE_REGISTRY_ABI, provider);
+        permissions = Number(await roleRegistry.getPermissions(roleId));
+      } catch (permErr) {
+        console.error('[RoleAuth] Failed to fetch role permissions:', permErr);
+      }
+
+      const info = { roleId, commitment, expiresAt, account, permissions };
       setKeyInfo(info);
       setStep('done');
       if (onKeyIssued) onKeyIssued(info);

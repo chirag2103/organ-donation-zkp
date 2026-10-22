@@ -15,8 +15,8 @@ import { uploadToIPFS, cidToBytes32 } from '../utils/ipfs';
 const BLOOD_TYPES = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 
 const ORGAN_REGISTRY_ABI = [
-  'function registerDonor(bytes32 encCID, uint8 bloodType, bytes32 hlaRoot) external returns (uint256)',
-  'event DonorRegistered(uint256 indexed id, bytes32 encCID, address registeredBy)',
+  'function registerDonor(string encCID, uint8 bloodType, bytes32 hlaRoot) external returns (uint256)',
+  'event DonorRegistered(uint256 indexed id, string encCID, address registeredBy)',
 ];
 
 export default function DonorRegister({ deployments, keyInfo }) {
@@ -36,22 +36,33 @@ export default function DonorRegister({ deployments, keyInfo }) {
     setStep('encrypting');
 
     try {
-      // 1. Encrypt attributes via PFE service
-      const { ciphertexts, encryptedRecord } = await encryptAttributes(
-        { bloodType: bloodType > 0 ? 1 : 0, hlaScore, urgency },
+      // 1. Encrypt attributes via PFE service (SEAL BFV ciphertexts).
+      //    bloodType is passed as the real 0-7 category (see BLOOD_TYPES
+      //    above) — the backend decomposes it into (isA, isB, isRhPos) for
+      //    real ABO/Rh compatibility scoring, not a same/different proxy.
+      const { ciphertexts } = await encryptAttributes(
+        { bloodType, hlaScore, urgency },
         keyInfo.roleId,
         keyInfo.commitment
       );
 
       setStep('uploading');
 
-      // 2. Upload encrypted record to IPFS
+      // 2. Upload the raw ciphertext bundle to IPFS (base64 JSON — no AES
+      //    wrap). Real confidentiality comes from the BFV encryption of
+      //    ciphertexts themselves; wrapping this in an ephemeral per-session
+      //    AES key would make the record unreadable by a later/different
+      //    role's session when computing a compatibility score, since access
+      //    is already gated on-chain (OrganRegistry.onlyValidKey +
+      //    hasPermission), not by this blob's own encryption.
+      const bundle = JSON.stringify({ ...ciphertexts, ts: Date.now() });
+      const encryptedRecord = btoa(bundle);
       const { cid } = await uploadToIPFS(encryptedRecord);
 
       setStep('registering');
 
-      // 3. Compute on-chain commitment = keccak256(cid)
-      const encCID = cidToBytes32(cid, ethers);
+      // 3. Use the raw string CID as the commitment
+      const encCID = cid;
 
       // 4. Compute HLA Merkle root (off-chain — here we use a placeholder hash)
       // In production, this would be the Merkle root of the HLA antigen set

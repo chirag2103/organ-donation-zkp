@@ -15,6 +15,19 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
+/**
+ * Service for Zero-Knowledge Proof (ZKP) generation.
+ *
+ * PROTOTYPE TRUST ASSUMPTION (Option B):
+ * In a fully decentralised production system, ZKP generation (and Merkle inclusion
+ * proofs) should happen entirely client-side (e.g., in the browser) to preserve
+ * zero-knowledge guarantees from the server.
+ * However, due to browser limitations with WASM chunking and circomlibjs memory
+ * overhead, this prototype currently generates ZKPs on the backend server.
+ * This introduces a temporary trust assumption where the server learns the user's
+ * raw role credentials during the proof generation phase.
+ */
+
 const snarkjs = require('snarkjs');
 const path    = require('path');
 const fs      = require('fs');
@@ -78,25 +91,19 @@ async function generateProof({
   if (!poseidon) throw new Error('ZKP not initialised. Call initZKP() first.');
 
   // ── Convert all inputs to BigInt ──────────────────────────────────────────
-  const credBig  = typeof credential === 'bigint'
-    ? credential
-    : BigInt(credential.startsWith('0x') ? credential : `0x${credential}`);
+  const parseBigInt = (val) => {
+    if (typeof val === 'bigint') return val;
+    const s = String(val);
+    if (/^\d+$/.test(s)) return BigInt(s); // purely decimal digits
+    return BigInt(s.startsWith('0x') ? s : `0x${s}`); // assume hex otherwise
+  };
 
-  const saltBig  = typeof salt === 'bigint'
-    ? salt
-    : BigInt(salt.startsWith('0x') ? salt : `0x${salt}`);
-
-  const rootBig  = typeof merkleRoot === 'bigint'
-    ? merkleRoot
-    : BigInt(merkleRoot.startsWith('0x') ? merkleRoot : `0x${merkleRoot}`);
-
+  const credBig  = parseBigInt(credential);
+  const saltBig  = parseBigInt(salt);
+  const rootBig  = parseBigInt(merkleRoot);
   const roleIdBig = BigInt(roleId);
 
-  const pathElemBig = pathElements.map(e => {
-    if (typeof e === 'bigint') return e;
-    const s = String(e);
-    return BigInt(s.startsWith('0x') ? s : `0x${s}`);
-  });
+  const pathElemBig = pathElements.map(parseBigInt);
 
   const pathIdxArr = pathIndices.map(Number);
 
@@ -120,6 +127,13 @@ async function generateProof({
 
   // ── Generate the Groth16 proof ────────────────────────────────────────────
   let proof, vkeyPublicSignals;
+
+  console.log('[DEBUG] Circuit Input:', JSON.stringify({
+    merkleRoot: circuitInput.merkleRoot,
+    credential: circuitInput.credential,
+    pathElements: circuitInput.pathElements.slice(0, 2),
+    pathIndices: circuitInput.pathIndices.slice(0, 2)
+  }, null, 2));
 
   // If compiled circuit artefacts exist, use them; otherwise use mock (dev mode)
   if (fs.existsSync(WASM_PATH) && fs.existsSync(ZKEY_PATH)) {
@@ -264,9 +278,36 @@ function deriveCredentialFromPassphrase(passphrase, roleId) {
   return BigInt(hash) % PRIME_R;
 }
 
+// Cache of precomputed "zero subtree hash" per level, keyed by depth.
+// zeroHashes[depth][0] = 0 (an empty leaf); zeroHashes[depth][i] = the
+// Poseidon hash of a fully-zero subtree of height i. These never depend on
+// the credential, so they're computed once per depth and reused forever.
+const _zeroHashCache = new Map();
+
+function getZeroHashes(depth) {
+  if (_zeroHashCache.has(depth)) return _zeroHashCache.get(depth);
+  const F = poseidon.F;
+  const zeroHashes = [BigInt(0)];
+  for (let lvl = 1; lvl <= depth; lvl++) {
+    const prev = zeroHashes[lvl - 1];
+    zeroHashes.push(BigInt(F.toObject(poseidon([prev, prev]))));
+  }
+  _zeroHashCache.set(depth, zeroHashes);
+  return zeroHashes;
+}
+
 /**
- * Build a 20-level Poseidon Merkle tree with leafScalar at index 0.
- * Returns root (BigInt) + sibling path for leaf[0].
+ * Build a 20-level Poseidon Merkle tree with leafScalar at index 0 and every
+ * other leaf implicitly zero. Returns root (BigInt) + sibling path for leaf[0].
+ *
+ * Since leaf[0] is the only non-zero leaf, every sibling on its path is the
+ * root of an all-zero subtree — a value that depends only on the level, not
+ * on leafScalar. We precompute those 20 "zero hashes" once (getZeroHashes)
+ * and then walk leaf[0]'s path directly, for O(depth) Poseidon calls total
+ * instead of naively hashing all 2^depth leaves pairwise (O(2^depth) calls —
+ * ~1,048,575 hashes at depth 20, which took 1-3+ minutes in practice). Both
+ * approaches compute the exact same root/path — this is just the fast way to
+ * do it (the classic "cached zero-value" incremental Merkle tree trick).
  *
  * @param {BigInt} leafScalar
  * @param {number} depth
@@ -274,27 +315,23 @@ function deriveCredentialFromPassphrase(passphrase, roleId) {
  */
 function buildMerkleTree(leafScalar, depth = 20) {
   if (!poseidon) throw new Error('ZKP not initialised');
-  const F    = poseidon.F;
-  const zero = BigInt(0);
+  const F = poseidon.F;
+  const zeroHashes = getZeroHashes(depth);
 
-  let layer = [leafScalar, ...Array(Math.pow(2, depth) - 1).fill(zero)];
   const pathElements = [];
   const pathIndices  = [];
+  let active = leafScalar;
 
   for (let lvl = 0; lvl < depth; lvl++) {
-    // Leaf 0 is always on the left; its sibling is layer[1]
+    // leaf[0] is always the left child at every level; its sibling is the
+    // all-zero subtree's cached hash at this level.
+    const sibling = zeroHashes[lvl];
     pathIndices.push(0);
-    pathElements.push(layer[1]);
-
-    const next = [];
-    for (let i = 0; i < layer.length; i += 2) {
-      const h = F.toObject(poseidon([layer[i], layer[i + 1]]));
-      next.push(BigInt(h));
-    }
-    layer = next;
+    pathElements.push(sibling);
+    active = BigInt(F.toObject(poseidon([active, sibling])));
   }
 
-  return { root: layer[0], pathElements, pathIndices };
+  return { root: active, pathElements, pathIndices };
 }
 
 /**

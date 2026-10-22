@@ -1,0 +1,45 @@
+{
+  "meta": {
+    "iterations": 10,
+    "ranAt": "2026-08-29T19:49:44.302Z"
+  },
+  "zkpMerkleTreeBuildMs": {
+    "mean": 59680.18,
+    "iterations": 1
+  },
+  "zkpProofGenerationMs": {
+    "mean": 3640.6,
+    "iterations": 1
+  },
+  "gas_verifyAndIssueKey": {
+    "mean": 375645,
+    "note": "single real-proof sample; Groth16 pairing-check gas is deterministic per verification"
+  },
+  "pfe_encryptAttributesMs": {
+    "mean": 20.92,
+    "std": 5.24
+  },
+  "pfe_computeCompatibilityScoreMs": {
+    "mean": 26.58,
+    "std": 3.31
+  },
+  "pfe_decryptScoreMs": {
+    "mean": 1.51,
+    "std": 0.37
+  },
+  "gas_registerDonor": {
+    "mean": 199169,
+    "min": 197449,
+    "max": 214561
+  },
+  "gas_executeRevocation": {
+    "mean": 98921,
+    "min": 98910,
+    "max": 98922
+  },
+  "pipelineLatencyMs": {
+    "mean": 70.11,
+    "iterations": 1,
+    "note": "encrypt -> registerDonor (on-chain) -> homomorphic score -> decrypt; excludes ZKP proof generation (measured separately above)"
+  }
+}

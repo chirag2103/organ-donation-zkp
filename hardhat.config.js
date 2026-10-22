@@ -55,6 +55,11 @@ module.exports = {
     allowUnlimitedContractSize: false,
   },
 
+  // Etherscan contract verification (Sepolia)
+  etherscan: {
+    apiKey: process.env.ETHERSCAN_API_KEY || '',
+  },
+
   // Gas reporting
   gasReporter: {
     enabled: process.env.REPORT_GAS === 'true',

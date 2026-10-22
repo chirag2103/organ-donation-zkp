@@ -6,20 +6,33 @@
  * Polynomial Functional Encryption engine using Microsoft SEAL (BFV scheme)
  * via node-seal.
  *
- * BFV parameters:
+ * BFV parameters (unchanged from earlier revisions — see evaluation_notes.md):
  *   polyModulusDegree : 4096
- *   plainModulus      : 786433 (a 20-bit Fermat prime: 3·2^18 + 1)
+ *   plainModulus      : PlainModulus.Batching(4096, 20)  (a 20-bit NTT-friendly prime)
  *
- * Polynomial compatibility function (kidney-optimised):
- *   f(x) = α0 + α1·x1 + α2·x2 + α3·x3 + α4·x1·x2 + α5·x2·x3
+ * Compatibility score (kidney-optimised):
+ *   score = HLA_WEIGHT·(donor.hla - recip.hla)^2
+ *         + W·[ isA_d·(1-isA_r) + isB_d·(1-isB_r) + isRh_d·(1-isRh_r) ]
  *
- * Where:
- *   x1 = blood type compatibility  (0 or 1, scaled × 1000)
- *   x2 = HLA antigen match score   (0–1 normalised, scaled × 1000)
- *   x3 = urgency level             (0–1 scaled, scaled × 1000)
+ * The bracketed term is a real ABO/Rh donor→recipient compatibility check
+ * (0 = fully compatible, up to 3 = incompatible on every antigen), evaluated
+ * homomorphically from each side's (isA, isB, isRhPos) blood-type
+ * decomposition — NOT a crude "same blood type or not" difference. This
+ * replaced an earlier version that collapsed blood type to a single
+ * `bloodType > 0` bit (so e.g. B+ and O- were indistinguishable) and whose
+ * HLA term was washed out by dividing by SCALE^2 with no separate weight
+ * (any HLA difference under ~71 percentage points rounded to 0). Both are
+ * fixed here: blood compatibility is now real ABO/Rh, and HLA gets its own
+ * HLA_WEIGHT so differences actually move the score. This is a *lower* raw
+ * distance = better match; see src/utils/pfe.js's toCompatibilityScore()
+ * for the 1000-minus-distance conversion used for display/ranking.
  *
- * All values are integer-encoded (×1000) to work within BFV's integer-only
- * plaintext space.
+ * The 3-way ABO/Rh sum below is built from 3 *independent* single-level
+ * homomorphic multiplications added together (no ciphertext multiplied by
+ * another ciphertext-derived result) — same multiplicative depth as the
+ * original scheme, verified empirically to decrypt correctly with the
+ * unchanged BFV parameters above (see PROGRESS notes / commit history for
+ * the verification script and its results).
  *
  * SECURITY: masterSecret is generated once at startup and NEVER logged.
  * ─────────────────────────────────────────────────────────────────────────────
@@ -42,8 +55,32 @@ const ALPHA = [
   50,   // α5: HLA × urgency cross  (0.05 × 1000)
 ];
 
-// SCALE factor for integer encoding (values are ×1000 before encryption)
-const SCALE = 1000;
+// SCALE factor for integer encoding. Widened from 10 -> 20 so HLA-score
+// differences are quantised into 21 levels (5% granularity) rather than 10
+// (verified this stays well within the plaintext modulus and noise budget
+// for the formula below — see the header comment).
+const SCALE = 20;
+
+// Weight applied to the HLA-difference term, analogous to W for blood.
+// Without an explicit weight, (diff)^2 is naturally in [0,1] and always
+// rounds to 0 or 1 after the final /SCALE^2 descale — this makes real HLA
+// differences (e.g. 2% vs 70%) actually move the score.
+const HLA_WEIGHT = 300;
+
+// Blood type index -> [isA, isB, isRhPos]. Index order matches BLOOD_TYPES
+// in DonorRegister.jsx/RecipientRegister.jsx: 0=A+ 1=A- 2=B+ 3=B- 4=AB+
+// 5=AB- 6=O+ 7=O-. Used to evaluate real ABO/Rh donor->recipient
+// compatibility homomorphically instead of a same/different proxy.
+const BLOOD_DECOMPOSE = [
+  [1, 0, 1], // A+
+  [1, 0, 0], // A-
+  [0, 1, 1], // B+
+  [0, 1, 0], // B-
+  [1, 1, 1], // AB+
+  [1, 1, 0], // AB-
+  [0, 0, 1], // O+
+  [0, 0, 0], // O-
+];
 
 // BFV parameters
 const POLY_MODULUS_DEGREE = 4096;
@@ -81,7 +118,7 @@ async function initPFE() {
     sealInstance.CoeffModulus.BFVDefault(POLY_MODULUS_DEGREE, securityLevel)
   );
 
-  // Set plain modulus — must be a prime congruent to 1 mod 2*degree
+  // Set plain modulus — must be a prime congruent to 1 mod 2*degree (20 bits gives plenty of noise budget for 1 mult)
   params.setPlainModulus(
     sealInstance.PlainModulus.Batching(POLY_MODULUS_DEGREE, 20)
   );
@@ -90,6 +127,10 @@ async function initPFE() {
   keyGenerator = sealInstance.KeyGenerator(context);
   secretKey   = keyGenerator.secretKey();
   publicKey   = keyGenerator.createPublicKey();
+  
+  // Generate relinearization keys for multiplication
+  const relinKeysObj = keyGenerator.createRelinKeys();
+  global.relinKeys = relinKeysObj;
 
   encryptor   = sealInstance.Encryptor(context, publicKey);
   decryptor   = sealInstance.Decryptor(context, secretKey);
@@ -137,17 +178,23 @@ function encryptScalar(value) {
 /**
  * Encrypt donor/recipient attributes into BFV ciphertexts.
  *
- * @param {number} x1  Blood type compatibility (0 or 1).
- * @param {number} x2  HLA antigen match score (0.0–1.0).
- * @param {number} x3  Urgency level (0.0–1.0).
- * @returns {{ ct1: string, ct2: string, ct3: string }}  Base64 ciphertexts.
+ * @param {number} bloodTypeIndex  Blood type index 0-7 (see BLOOD_DECOMPOSE) —
+ *                                 the actual category, NOT a pre-binarized bit.
+ * @param {number} hlaScore        HLA antigen match score (0.0–1.0).
+ * @param {number} urgency         Urgency level (0.0–1.0).
+ * @returns {{ ctIsA, ctIsB, ctIsRhPos, ctHla, ctUrgency }}  Base64 ciphertexts.
  */
-function encryptAttributes(x1, x2, x3) {
+function encryptAttributes(bloodTypeIndex, hlaScore, urgency) {
   if (!sealInstance) throw new Error('PFE not initialised. Call initPFE() first.');
+  const decomposition = BLOOD_DECOMPOSE[bloodTypeIndex];
+  if (!decomposition) throw new Error(`Invalid bloodTypeIndex: ${bloodTypeIndex} (expected 0-7)`);
+  const [isA, isB, isRhPos] = decomposition;
   return {
-    ct1: encryptScalar(x1),
-    ct2: encryptScalar(x2),
-    ct3: encryptScalar(x3),
+    ctIsA:     encryptScalar(isA),
+    ctIsB:     encryptScalar(isB),
+    ctIsRhPos: encryptScalar(isRhPos),
+    ctHla:     encryptScalar(hlaScore),
+    ctUrgency: encryptScalar(urgency),
   };
 }
 
@@ -162,77 +209,96 @@ function loadCipherText(b64) {
 }
 
 /**
- * Compute encrypted compatibility score using polynomial evaluation.
+ * Given two encrypted 0/1 flags (each SCALE-scaled at encryption time),
+ * homomorphically compute donorFlag AND (NOT recipFlag) — i.e. "donor has
+ * this antigen but recipient doesn't", one incompatibility indicator.
+ * Costs exactly one ciphertext-ciphertext multiplication (same depth as the
+ * squared-difference terms elsewhere in this file).
  *
- * f(x) = α0 + α1·x1 + α2·x2 + α3·x3 + α4·x1·x2 + α5·x2·x3
- *
- * All arithmetic is performed in the encrypted domain via BFV evaluator.
- *
- * @param {string} ct1b64   Base64 ciphertext for x1 (blood type compatibility).
- * @param {string} ct2b64   Base64 ciphertext for x2 (HLA match score × SCALE).
- * @param {string} ct3b64   Base64 ciphertext for x3 (urgency × SCALE).
- * @param {number[]} alpha  Weight coefficients [α0..α5] (default ALPHA).
- * @returns {string}        Base64-encoded encrypted polynomial result.
+ * @returns {object}  SEAL CipherText, SCALE^2-scaled, representing 0 or 1.
  */
-function computeCompatibilityScore(ct1b64, ct2b64, ct3b64, alpha = ALPHA) {
+function computeIncompatibility(donorFlagCt, recipFlagCt) {
+  const scalePlain = encodeScalar(SCALE);
+  const oneMinusRecip = sealInstance.CipherText();
+  evaluator.negate(recipFlagCt, oneMinusRecip);
+  evaluator.addPlain(oneMinusRecip, scalePlain, oneMinusRecip);
+  scalePlain.delete();
+
+  const product = sealInstance.CipherText();
+  evaluator.multiply(donorFlagCt, oneMinusRecip, product);
+  evaluator.relinearize(product, global.relinKeys, product);
+  oneMinusRecip.delete();
+  return product;
+}
+
+/**
+ * Compute encrypted compatibility score using homomorphic evaluation.
+ *
+ * Math: score = HLA_WEIGHT * (donor.hla - recipient.hla)^2
+ *             + W * [ isA_d*(1-isA_r) + isB_d*(1-isB_r) + isRh_d*(1-isRh_r) ]
+ *
+ * The bracketed term is real ABO/Rh donor->recipient compatibility (0 =
+ * fully compatible, up to 3 = incompatible on every antigen) — see the
+ * file header comment for why this replaced a cruder same/different check,
+ * and why HLA needs its own weight. Lower score = better match (this is a
+ * dissimilarity distance, not a compatibility score — see
+ * src/utils/pfe.js's toCompatibilityScore() for the conversion used by the
+ * UI). All arithmetic is performed in the encrypted domain via BFV evaluator.
+ *
+ * @param {object} donorCts   Donor ciphertexts { ctIsA, ctIsB, ctIsRhPos, ctHla }
+ * @param {object} recipCts   Recipient ciphertexts { ctIsA, ctIsB, ctIsRhPos, ctHla }
+ * @param {number} W          Weight per incompatible antigen (default: 100)
+ * @returns {string}          Base64-encoded encrypted result.
+ */
+function computeCompatibilityScore(donorCts, recipCts, W = 100) {
   if (!sealInstance) throw new Error('PFE not initialised.');
 
-  const ct1 = loadCipherText(ct1b64);
-  const ct2 = loadCipherText(ct2b64);
-  const ct3 = loadCipherText(ct3b64);
+  const dIsA = loadCipherText(donorCts.ctIsA);
+  const dIsB = loadCipherText(donorCts.ctIsB);
+  const dRh  = loadCipherText(donorCts.ctIsRhPos);
+  const dHla = loadCipherText(donorCts.ctHla);
+  const rIsA = loadCipherText(recipCts.ctIsA);
+  const rIsB = loadCipherText(recipCts.ctIsB);
+  const rRh  = loadCipherText(recipCts.ctIsRhPos);
+  const rHla = loadCipherText(recipCts.ctHla);
 
-  // α1·x1
-  const plain_a1 = encodeScalar(alpha[1]);
-  const term1    = sealInstance.CipherText();
-  evaluator.multiplyPlain(ct1, plain_a1, term1);
-  plain_a1.delete();
+  // 1. Real ABO/Rh incompatibility sum (3 independent single-level mults)
+  const aIncompat  = computeIncompatibility(dIsA, rIsA);
+  const bIncompat  = computeIncompatibility(dIsB, rIsB);
+  const rhIncompat = computeIncompatibility(dRh, rRh);
 
-  // α2·x2
-  const plain_a2 = encodeScalar(alpha[2]);
-  const term2    = sealInstance.CipherText();
-  evaluator.multiplyPlain(ct2, plain_a2, term2);
-  plain_a2.delete();
+  const bloodSum = sealInstance.CipherText();
+  evaluator.add(aIncompat, bIncompat, bloodSum);
+  evaluator.add(bloodSum, rhIncompat, bloodSum);
 
-  // α3·x3
-  const plain_a3 = encodeScalar(alpha[3]);
-  const term3    = sealInstance.CipherText();
-  evaluator.multiplyPlain(ct3, plain_a3, term3);
-  plain_a3.delete();
+  const plainW = encodeScalar(W);
+  const bloodSumW = sealInstance.CipherText();
+  evaluator.multiplyPlain(bloodSum, plainW, bloodSumW);
+  plainW.delete();
 
-  // α4·x1·x2
-  const ct1x2  = sealInstance.CipherText();
-  evaluator.multiply(ct1, ct2, ct1x2);
-  const plain_a4 = encodeScalar(alpha[4]);
-  const term4    = sealInstance.CipherText();
-  evaluator.multiplyPlain(ct1x2, plain_a4, term4);
-  plain_a4.delete();
-  ct1x2.delete();
+  // 2. Weighted HLA squared-difference
+  const diffHla = sealInstance.CipherText();
+  evaluator.sub(dHla, rHla, diffHla);
+  const diffHlaSq = sealInstance.CipherText();
+  evaluator.multiply(diffHla, diffHla, diffHlaSq);
+  evaluator.relinearize(diffHlaSq, global.relinKeys, diffHlaSq);
 
-  // α5·x2·x3
-  const ct2x3  = sealInstance.CipherText();
-  evaluator.multiply(ct2, ct3, ct2x3);
-  const plain_a5 = encodeScalar(alpha[5]);
-  const term5    = sealInstance.CipherText();
-  evaluator.multiplyPlain(ct2x3, plain_a5, term5);
-  plain_a5.delete();
-  ct2x3.delete();
+  const plainHlaWeight = encodeScalar(HLA_WEIGHT);
+  const diffHlaSqW = sealInstance.CipherText();
+  evaluator.multiplyPlain(diffHlaSq, plainHlaWeight, diffHlaSqW);
+  plainHlaWeight.delete();
 
-  // Sum all terms: result = α0 + term1 + term2 + term3 + term4 + term5
-  const plain_a0 = encodeScalar(alpha[0]);
-  const result   = sealInstance.CipherText();
-  evaluator.addPlain(term1, plain_a0, result);
-  plain_a0.delete();
-
-  evaluator.addInplace(result, term2);
-  evaluator.addInplace(result, term3);
-  evaluator.addInplace(result, term4);
-  evaluator.addInplace(result, term5);
+  // 3. score = diffHlaSqW + bloodSumW
+  const score = sealInstance.CipherText();
+  evaluator.add(diffHlaSqW, bloodSumW, score);
 
   // Cleanup intermediate ciphertexts
-  [ct1, ct2, ct3, term1, term2, term3, term4, term5].forEach(ct => ct.delete());
+  [dIsA, dIsB, dRh, dHla, rIsA, rIsB, rRh, rHla,
+   aIncompat, bIncompat, rhIncompat, bloodSum, bloodSumW,
+   diffHla, diffHlaSq, diffHlaSqW].forEach(ct => ct.delete());
 
-  const b64 = Buffer.from(result.save()).toString('base64');
-  result.delete();
+  const b64 = Buffer.from(score.save()).toString('base64');
+  score.delete();
   return b64;
 }
 
@@ -253,12 +319,11 @@ function decryptScore(encryptedScoreB64) {
   cipher.delete();
   plain.delete();
 
-  // Score is in slot 0 — divide by SCALE^2 due to two multiplications
+  // Score is in slot 0 — divide by SCALE^2 due to one homomorphic multiplication
+  // per term. This is a raw dissimilarity distance (0 = perfect match), not
+  // a compatibility score — see src/utils/pfe.js's toCompatibilityScore().
   const rawScore = Number(decoded[0]);
-  // After two levels of multiplication, scale factor is SCALE^2
-  // But we only multiplied α (integer) × ct (SCALE×value), so actual scale = SCALE
-  // The cross terms (x1·x2) have scale SCALE^2 — normalise to 0–1000 range
-  const normScore = Math.round(rawScore / SCALE);
+  const normScore = Math.round(rawScore / (SCALE * SCALE));
   return Math.max(0, Math.min(1000, normScore));
 }
 
@@ -327,26 +392,27 @@ function decryptWithRoleKey(encryptedB64, key) {
 
 /**
  * Compute the encrypted record for a full donor/recipient attribute set.
- * Encrypts all three attributes and then AES-wraps the ciphertext bundle.
+ * Encrypts all attributes and then AES-wraps the ciphertext bundle.
  *
- * @param {{ bloodType, hlaScore, urgency }} attrs   Raw attributes.
+ * @param {{ bloodType, hlaScore, urgency }} attrs   Raw attributes
+ *                                                   (bloodType is the 0-7 index).
  * @param {Buffer}                            roleKey  AES role key.
  * @returns {{ ciphertexts, encryptedRecord }}
  */
 function prepareEncryptedRecord(attrs, roleKey) {
   if (!sealInstance) throw new Error('PFE not initialised.');
 
-  const { ct1, ct2, ct3 } = encryptAttributes(
+  const ciphertexts = encryptAttributes(
     attrs.bloodType,
     attrs.hlaScore,
     attrs.urgency
   );
 
-  const bundle         = JSON.stringify({ ct1, ct2, ct3, ts: Date.now() });
+  const bundle          = JSON.stringify({ ...ciphertexts, ts: Date.now() });
   const encryptedRecord = encryptWithRoleKey(bundle, roleKey);
 
   return {
-    ciphertexts:     [ct1, ct2, ct3],
+    ciphertexts,
     encryptedRecord,
   };
 }

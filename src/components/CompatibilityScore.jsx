@@ -9,12 +9,40 @@
 
 import React, { useState, useCallback } from 'react';
 import { ethers } from 'ethers';
-import { computeScore, decryptScore, interpretScore } from '../utils/pfe';
+import { computeScore, decryptScore, interpretScore, toCompatibilityScore } from '../utils/pfe';
+import { downloadFromIPFS } from '../utils/ipfs';
 
 const ORGAN_REGISTRY_ABI = [
-  'function getEncryptedCID(uint256 donorId) view returns (bytes32)',
-  'function getRecipientEncryptedCID(uint256 recipientId) view returns (bytes32)',
+  'function getCompatibilityScore(uint256 donorId, uint256 recipientId) view returns (bytes)',
+  'function donorCount() view returns (uint256)',
+  'function recipientCount() view returns (uint256)',
+  'function donors(uint256) view returns (string encCID, uint8 bloodType, bytes32 hlaRoot, address registeredBy, bool active, uint256 ts)',
+  'function recipients(uint256) view returns (string encCID, uint8 bloodType, bytes32 hlaRoot, address registeredBy, bool active, uint256 ts, uint8 urgency)',
 ];
+
+const SCORE_ABI_TYPES = ['string', 'string', 'uint8', 'uint8', 'bytes32', 'bytes32', 'uint8'];
+
+/**
+ * Fetch a donor/recipient's real BFV ciphertexts from IPFS (registered via
+ * DonorRegister.jsx / RecipientRegister.jsx). Returns null if unavailable
+ * (e.g. record predates this ciphertext format, or IPFS daemon isn't
+ * reachable) so callers can show a clear error instead of scoring garbage.
+ */
+async function fetchRealCiphertexts(encCID) {
+  try {
+    const bundle = await downloadFromIPFS(encCID);
+    if (!bundle || !bundle.ctIsA || !bundle.ctIsB || !bundle.ctIsRhPos || !bundle.ctHla) return null;
+    return {
+      ctIsA:     bundle.ctIsA,
+      ctIsB:     bundle.ctIsB,
+      ctIsRhPos: bundle.ctIsRhPos,
+      ctHla:     bundle.ctHla,
+    };
+  } catch (err) {
+    console.warn('[CompatibilityScore] Could not fetch real ciphertexts for', encCID, err.message);
+    return null;
+  }
+}
 
 export default function CompatibilityScore({ deployments, keyInfo }) {
   const [donorId, setDonorId]         = useState('');
@@ -23,13 +51,18 @@ export default function CompatibilityScore({ deployments, keyInfo }) {
   const [scoreResult, setScoreResult] = useState(null);
   const [error, setError]             = useState('');
 
-  // For demo: user provides ciphertexts directly (in real app, fetched from IPFS)
-  const [ct1, setCt1] = useState('');
-  const [ct2, setCt2] = useState('');
-  const [ct3, setCt3] = useState('');
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  // ── "Find Best Matches" — scans every active donor×recipient pair ────────
+  const [matches, setMatches]         = useState(null);
+  const [matchStep, setMatchStep]     = useState('idle'); // idle|scanning|done|error
+  const [matchError, setMatchError]   = useState('');
+  const [matchProgress, setMatchProgress] = useState('');
 
-  const handleCompute = useCallback(async () => {
+  // Accepts optional overrides so callers (e.g. "View" on a matched pair)
+  // can compute immediately without waiting on a state update + re-render.
+  const handleCompute = useCallback(async (overrideDonorId, overrideRecipientId) => {
+    const useDonorId     = overrideDonorId     !== undefined ? String(overrideDonorId)     : donorId;
+    const useRecipientId = overrideRecipientId !== undefined ? String(overrideRecipientId) : recipientId;
+
     if (!keyInfo) { setError('Authenticate your role first.'); return; }
     if (!deployments) { setError('Contracts not deployed.'); return; }
 
@@ -45,48 +78,56 @@ export default function CompatibilityScore({ deployments, keyInfo }) {
         provider
       );
 
-      // 1. Fetch encrypted CID commitments (on-chain data is just bytes32 hash)
-      let donorEncCID = null, recipientEncCID = null;
-      if (donorId.trim()) {
-        donorEncCID = await registry.getEncryptedCID(parseInt(donorId));
+      // 1. Fetch encrypted CID commitments from OrganRegistry, then
+      //    download+use the REAL BFV ciphertexts from IPFS.
+      if (!useDonorId.trim() || !useRecipientId.trim()) {
+        throw new Error('Enter both a Donor ID and a Recipient ID.');
       }
-      if (recipientId.trim()) {
-        recipientEncCID = await registry.getRecipientEncryptedCID(parseInt(recipientId));
+      const encodedData = await registry.getCompatibilityScore(parseInt(useDonorId), parseInt(useRecipientId));
+      const [donorEncCID, recipEncCID] = ethers.AbiCoder.defaultAbiCoder().decode(SCORE_ABI_TYPES, encodedData);
+
+      const [dCts, rCts] = await Promise.all([
+        fetchRealCiphertexts(donorEncCID),
+        fetchRealCiphertexts(recipEncCID),
+      ]);
+      if (!dCts || !rCts) {
+        throw new Error('Could not retrieve this pair\'s encrypted attributes from IPFS — is the IPFS daemon running, and were both records registered after the PFE ciphertext format update?');
       }
 
       setStep('scoring');
 
-      // 2. Compute encrypted compatibility score using provided or demo ciphertexts
-      // In production, ciphertexts would be downloaded from IPFS using the CID
-      const demoBloodTypeCt  = ct1 || 'DEMO_CT1_BASE64';
-      const demoHlaScoreCt   = ct2 || 'DEMO_CT2_BASE64';
-      const demoUrgencyCt    = ct3 || 'DEMO_CT3_BASE64';
-
       const { encryptedScore } = await computeScore(
-        demoBloodTypeCt,
-        demoHlaScoreCt,
-        demoUrgencyCt,
+        dCts,
+        rCts,
+        100, // W parameter
         keyInfo.roleId,
         keyInfo.commitment
       );
 
       setStep('decrypting');
 
-      // 3. Decrypt the score
-      const { score } = await decryptScore(
+      // 3. Decrypt the score. decryptScore() returns a raw dissimilarity
+      //    distance (0 = perfect match) - convert to a compatibility score
+      //    (higher = better, out of 1000) before displaying/interpreting it.
+      const { score: rawDistance } = await decryptScore(
         encryptedScore,
         keyInfo.roleId,
         keyInfo.commitment
       );
+      const score = toCompatibilityScore(rawDistance);
 
       const interpretation = interpretScore(score);
       setScoreResult({
         score,
         interpretation,
-        donorId: donorId || 'demo',
-        recipientId: recipientId || 'demo',
+        donorId: useDonorId || 'demo',
+        recipientId: useRecipientId || 'demo',
         encryptedScore: encryptedScore.slice(0, 40) + '…',
       });
+      // Reflect the actual pair scored back into the input fields (relevant
+      // when called via viewMatchDetail() with overrides).
+      setDonorId(useDonorId);
+      setRecipientId(useRecipientId);
       setStep('done');
 
     } catch (err) {
@@ -94,9 +135,92 @@ export default function CompatibilityScore({ deployments, keyInfo }) {
       setError(err.message || 'Score computation failed');
       setStep('error');
     }
-  }, [keyInfo, deployments, donorId, recipientId, ct1, ct2, ct3]);
+  }, [keyInfo, deployments, donorId, recipientId]);
+
+  // ── Find Best Matches: scores every active donor×recipient pair ──────────
+  const handleFindMatches = useCallback(async () => {
+    if (!keyInfo) { setMatchError('Authenticate your role first.'); setMatchStep('error'); return; }
+    if (!deployments) { setMatchError('Contracts not deployed.'); setMatchStep('error'); return; }
+
+    setMatchError('');
+    setMatches(null);
+    setMatchStep('scanning');
+    setMatchProgress('Reading donor/recipient counts…');
+
+    try {
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const registry = new ethers.Contract(deployments.OrganRegistry, ORGAN_REGISTRY_ABI, provider);
+
+      const [donorN, recipN] = await Promise.all([
+        registry.donorCount().then(Number),
+        registry.recipientCount().then(Number),
+      ]);
+
+      // 1. Gather each active donor's / recipient's real ciphertexts once
+      //    (avoids re-downloading the same IPFS record for every pairing).
+      const donorList = [];
+      for (let i = 0; i < donorN; i++) {
+        setMatchProgress(`Loading donor ${i + 1}/${donorN}…`);
+        const d = await registry.donors(i);
+        if (!d.active) continue;
+        const cts = await fetchRealCiphertexts(d.encCID);
+        if (cts) donorList.push({ id: i, ...cts });
+      }
+
+      const recipientList = [];
+      for (let i = 0; i < recipN; i++) {
+        setMatchProgress(`Loading recipient ${i + 1}/${recipN}…`);
+        const r = await registry.recipients(i);
+        if (!r.active) continue;
+        const cts = await fetchRealCiphertexts(r.encCID);
+        if (cts) recipientList.push({ id: i, ...cts });
+      }
+
+      if (donorList.length === 0 || recipientList.length === 0) {
+        setMatchError('No active donor/recipient records with retrievable IPFS data were found. Register at least one of each first.');
+        setMatchStep('error');
+        return;
+      }
+
+      // 2. Score every pair (homomorphic evaluation + decrypt, per pair)
+      const results = [];
+      const total = donorList.length * recipientList.length;
+      let done = 0;
+      for (const d of donorList) {
+        for (const r of recipientList) {
+          setMatchProgress(`Scoring pair ${++done}/${total}…`);
+          const { encryptedScore } = await computeScore(
+            { ctIsA: d.ctIsA, ctIsB: d.ctIsB, ctIsRhPos: d.ctIsRhPos, ctHla: d.ctHla },
+            { ctIsA: r.ctIsA, ctIsB: r.ctIsB, ctIsRhPos: r.ctIsRhPos, ctHla: r.ctHla },
+            100,
+            keyInfo.roleId,
+            keyInfo.commitment
+          );
+          // decryptScore() returns a raw dissimilarity distance (0 = perfect
+          // match) - convert to a compatibility score before ranking/display.
+          const { score: rawDistance } = await decryptScore(encryptedScore, keyInfo.roleId, keyInfo.commitment);
+          const score = toCompatibilityScore(rawDistance);
+          results.push({ donorId: d.id, recipientId: r.id, score, interpretation: interpretScore(score) });
+        }
+      }
+
+      results.sort((a, b) => b.score - a.score); // higher compatibility first
+      setMatches(results);
+      setMatchStep('done');
+
+    } catch (err) {
+      console.error('[CompatibilityScore] Find matches failed:', err);
+      setMatchError(err.message || 'Matching scan failed');
+      setMatchStep('error');
+    }
+  }, [keyInfo, deployments]);
+
+  const viewMatchDetail = useCallback((m) => {
+    handleCompute(m.donorId, m.recipientId);
+  }, [handleCompute]);
 
   const isLoading = ['fetching', 'scoring', 'decrypting'].includes(step);
+  const isMatching = matchStep === 'scanning';
 
   return (
     <div className="card">
@@ -111,6 +235,64 @@ export default function CompatibilityScore({ deployments, keyInfo }) {
       {!keyInfo && (
         <div className="alert alert--warning">⚠️ Authenticate your role to compute scores.</div>
       )}
+
+      {/* Auto-matching: scan every active donor×recipient pair */}
+      <div className="form-group">
+        <button
+          id="btn-find-matches"
+          className="btn btn-primary btn-full"
+          onClick={handleFindMatches}
+          disabled={!keyInfo || isMatching || isLoading}
+        >
+          {isMatching ? <><Spinner /> {matchProgress || 'Scanning…'}</> : '🔍 Find Best Matches (all pairs)'}
+        </button>
+        <p className="form-hint">
+          Scores every active donor against every active recipient using real
+          BFV ciphertexts fetched from IPFS, and ranks the results.
+        </p>
+      </div>
+
+      {matchError && matchStep === 'error' && (
+        <div className="alert alert--error">⚠️ {matchError}</div>
+      )}
+
+      {matches && matchStep === 'done' && (
+        <div className="score-result" style={{ marginBottom: '1.5rem' }}>
+          <p className="formula-label">
+            {matches.length} pair{matches.length === 1 ? '' : 's'} scored — best match first
+          </p>
+          <table className="match-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: 'left' }}>Donor</th>
+                <th style={{ textAlign: 'left' }}>Recipient</th>
+                <th style={{ textAlign: 'left' }}>Score</th>
+                <th style={{ textAlign: 'left' }}>Match</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {matches.map((m, i) => (
+                <tr key={`${m.donorId}-${m.recipientId}`} style={i === 0 ? { fontWeight: 'bold' } : undefined}>
+                  <td>#{m.donorId}</td>
+                  <td>#{m.recipientId}</td>
+                  <td style={{ color: m.interpretation.colour }}>{m.score}/1000</td>
+                  <td style={{ color: m.interpretation.colour }}>
+                    {i === 0 ? '🏆 ' : ''}{m.interpretation.label}
+                  </td>
+                  <td>
+                    <button className="btn-link" onClick={() => viewMatchDetail(m)}>View</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <p className="form-hint" style={{ margin: '1rem 0' }}>
+        Or look up one specific pair manually:
+      </p>
 
       {/* ID inputs */}
       <div className="form-row">
@@ -140,55 +322,24 @@ export default function CompatibilityScore({ deployments, keyInfo }) {
         </div>
       </div>
 
-      {/* Advanced: ciphertext inputs */}
-      <button
-        className="btn-link"
-        onClick={() => setShowAdvanced(!showAdvanced)}
-      >
-        {showAdvanced ? '▲ Hide' : '▼ Show'} advanced ciphertext inputs
-      </button>
-
-      {showAdvanced && (
-        <div className="advanced-inputs">
-          <p className="form-hint">
-            In production, ciphertexts are automatically retrieved from IPFS using the CID.
-            Paste base64 ciphertexts below for manual testing.
-          </p>
-          {[
-            { id: 'ct1-input', label: 'ct1 — Blood Type Compatibility', val: ct1, set: setCt1 },
-            { id: 'ct2-input', label: 'ct2 — HLA Match Score', val: ct2, set: setCt2 },
-            { id: 'ct3-input', label: 'ct3 — Urgency Level', val: ct3, set: setCt3 },
-          ].map(({ id, label, val, set }) => (
-            <div key={id} className="form-group">
-              <label htmlFor={id}>{label}</label>
-              <textarea
-                id={id}
-                className="form-input form-textarea"
-                placeholder="Base64 BFV ciphertext…"
-                value={val}
-                onChange={e => set(e.target.value)}
-                rows={2}
-              />
-            </div>
-          ))}
-        </div>
-      )}
-
       {/* Polynomial formula display */}
       <div className="formula-box">
-        <p className="formula-label">Kidney Compatibility Polynomial:</p>
+        <p className="formula-label">Compatibility Distance Equation:</p>
         <p className="formula">
-          f(x) = 0.05 + 0.40·x₁ + 0.30·x₂ + 0.15·x₃ + 0.05·x₁x₂ + 0.05·x₂x₃
+          distance = HLA_WEIGHT·(donor.hla − recip.hla)² + W·(ABO/Rh incompatibility count)
         </p>
         <p className="formula-note">
-          x₁=blood type compatibility · x₂=HLA match · x₃=urgency (all encrypted)
+          ABO/Rh incompatibility count (0–3) is a real donor→recipient blood
+          compatibility check evaluated homomorphically — not a same/different
+          proxy. Lower distance = better match; displayed as 1000 − distance.
+          Variables are fully encrypted during homomorphic evaluation.
         </p>
       </div>
 
       <button
         id="btn-compute-score"
         className="btn btn-primary btn-full"
-        onClick={handleCompute}
+        onClick={() => handleCompute()}
         disabled={!keyInfo || isLoading}
       >
         {step === 'fetching'   && <><Spinner /> Fetching encrypted CIDs…</>}
@@ -229,6 +380,7 @@ export default function CompatibilityScore({ deployments, keyInfo }) {
             <InfoRow label="Donor ID"    value={`#${scoreResult.donorId}`} />
             <InfoRow label="Recipient"   value={`#${scoreResult.recipientId}`} />
             <InfoRow label="Enc. score"  value={scoreResult.encryptedScore} mono />
+            <InfoRow label="Data source" value="✅ Real IPFS-registered ciphertexts" />
           </div>
 
           <div className="privacy-notice">

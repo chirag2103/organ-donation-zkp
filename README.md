@@ -188,9 +188,33 @@ npm run frontend
 ### 9. Run tests
 
 ```bash
-npm test
-npm run test:gas  # with gas report
+npm test                    # 60+ fast contract unit tests (mock ZKP verifier)
+npm run test:gas            # unit tests with gas report
+npm run test:integration    # real Groth16 proofs + SEAL BFV + full e2e chain (slower)
+npm run benchmark           # performance/gas benchmarks → benchmark_results.md
 ```
+
+`npm run test:integration` requires the compiled circuit artefacts in
+`circuits/build/` (already present in this repo) — do **not** re-run
+`npm run ceremony` beforehand. `test/integration/ipfsService.test.js`
+additionally needs a running `ipfs daemon` and is skipped gracefully if one
+isn't reachable.
+
+---
+
+### 10. Deploy to Sepolia testnet (optional)
+
+```bash
+cp .env.example .env
+# fill in SEPOLIA_RPC_URL, DEPLOYER_PRIVATE_KEY (funded with Sepolia test ETH),
+# and ETHERSCAN_API_KEY
+npm run deploy:sepolia
+# then, using the addresses printed by the script:
+npx hardhat verify --network sepolia <address> [constructor args]
+```
+
+Deployment addresses (and Etherscan links) are written to
+`deployments/sepolia.json`.
 
 ---
 
@@ -265,6 +289,36 @@ Constraints:
 
 ---
 
+## Security Model
+
+**Prototype trust assumption — server-side ZKP generation.** In a fully
+decentralised deployment, credential derivation and Merkle-tree/witness
+computation for the ZKP would run entirely client-side (browser WASM), so the
+role credential never leaves the user's device. In this prototype, that
+computation runs on the Express backend (`server/zkpService.js`) for
+practical reasons (browser WASM chunking / circomlibjs memory overhead at
+the current 20-level tree depth):
+
+- The credential is transmitted to the server over HTTPS/TLS.
+- It is held **only in memory**, used once to build the Merkle path and
+  generate the proof, and is never persisted, logged, or returned in any
+  response (`zkpService.js` also zeroes the private-input references it
+  holds after use, as a defence-in-depth measure).
+- The cryptographic soundness and zero-knowledge property of the Groth16
+  proof itself are unaffected — the trust assumption is scoped purely to
+  *who computes the witness*, not to what the proof reveals on-chain.
+- Production hardening path: move `deriveCredential()` and Merkle-tree
+  construction into the browser (e.g. via `@zk-kit/incremental-merkle-tree`
+  + `poseidon-lite`, both pure-JS/browser-safe) and call
+  `snarkjs.groth16.fullProve()` client-side against a browser-served
+  `roleProof.wasm` + streamed `.zkey`, so the server only ever sees
+  `{ merkleRoot, roleId }` and a public transaction, never the credential.
+
+This is a deployment-engineering limitation of the current prototype, not a
+cryptographic weakness of the ZKP scheme — see "Known Limitations" below.
+
+---
+
 ## Security Constraints
 
 - ✗ **NEVER** log credentials, PFE master keys, or role keys
@@ -275,6 +329,40 @@ Constraints:
 - ✓ IPFS unpin triggered automatically on `RevocationExecuted` event
 - ✓ Nullifier replay protection in `PFEKeyIssuer`
 - ✓ Rate limiting on all `/api/` endpoints (100 req / 15 min)
+
+---
+
+## Known Limitations & Future Work
+
+- **Server-side credential handling** — see [Security Model](#security-model)
+  above; the fix path (client-side witness generation) is scoped there.
+- **Single-institution deployment** — `RoleRegistry` roots and `PFEKeyIssuer`
+  keys are managed by one deployer/admin key. Multi-hospital federation
+  (per-institution role registries, cross-institution key trust) is future
+  work.
+- **3-variable compatibility polynomial** — the current PFE model scores on
+  blood type, HLA match, and urgency only. A clinically fuller model would
+  add cold-ischemia time and geographic proximity (5 variables, with
+  cross-terms), at the cost of additional SEAL BFV multiplications
+  (relinearization + noise budget) per score.
+- **Classical signatures** — role transactions are authorised via standard
+  ECDSA (secp256k1), which is not post-quantum secure. A future iteration
+  could migrate to a post-quantum scheme (e.g. CRYSTALS-Dilithium) once
+  EVM-side verification becomes practical.
+
+---
+
+## Research Contribution
+
+The novel contribution is the **three-way integration**, not any single
+primitive in isolation: Groth16 ZKP role-authentication is used as an
+on-chain **gate** for issuing scoped Polynomial Functional Encryption keys
+(`PFEKeyIssuer`), which in turn authorise homomorphic (SEAL BFV) compatibility
+scoring over IPFS-backed, pseudonymous donor/recipient records, with GDPR
+Article 17 erasure wired directly into the on-chain revocation lifecycle
+(`LifecycleManager` → IPFS unpin listener). Prior work (see comparison table
+above) addresses at most two of these three concerns at once, and none gate
+functional-encryption key issuance behind a zero-knowledge role proof.
 
 ---
 
