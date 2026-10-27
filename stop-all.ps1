@@ -1,24 +1,14 @@
-# stop-all.ps1
-# ---------------------------------------------------------------------------
-# Stops every process started by start-all.ps1 (Hardhat node, IPFS daemon,
-# backend server, Vite frontend) - use this instead of closing each window by
-# hand, and instead of leaving stray processes running across sessions.
-# ---------------------------------------------------------------------------
-
-$targets = Get-CimInstance Win32_Process | Where-Object {
-    ($_.Name -eq 'node.exe' -and $_.CommandLine -match 'hardhat|server[/\\]index\.js|vite') -or
-    ($_.Name -eq 'ipfs.exe' -and $_.CommandLine -match 'daemon')
+$ErrorActionPreference = 'Stop'
+$recordFile = Join-Path $PSScriptRoot 'runtime/local-stack/processes.json'
+if (-not (Test-Path -LiteralPath $recordFile)) { Write-Host 'No recorded local stack.'; exit 0 }
+$entries = Get-Content -LiteralPath $recordFile -Raw | ConvertFrom-Json
+foreach ($entry in $entries) {
+    $process = Get-Process -Id $entry.pid -ErrorAction SilentlyContinue
+    if (-not $process) { continue }
+    $actualStart = $process.StartTime.ToUniversalTime().Ticks.ToString()
+    if (-not $entry.createdTicks -or $actualStart -ne $entry.createdTicks) {
+        Write-Host "Skipping reused or unverified PID $($entry.pid)"; continue
+    }
+    Stop-Process -Id $entry.pid -ErrorAction SilentlyContinue
 }
-
-if (-not $targets) {
-    Write-Host "No matching processes found - nothing to stop." -ForegroundColor Yellow
-    exit 0
-}
-
-$targets | ForEach-Object {
-    Write-Host "Stopping PID $($_.ProcessId): $($_.CommandLine)" -ForegroundColor Cyan
-    Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
-}
-
-Write-Host ""
-Write-Host "Done. (Any PowerShell windows left open by start-all.ps1 can now be closed.)" -ForegroundColor Green
+Write-Host 'Stopped verified processes recorded by this workspace stack.'

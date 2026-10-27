@@ -1,0 +1,23 @@
+{
+  "source": "server/bfvService.js and node-seal PlainModulus.Batching(4096,20)",
+  "scheme": "BFV",
+  "polyModulusDegree": 4096,
+  "securityLevel": "SEAL tc128 parameter validation",
+  "coefficientModulus": "CoeffModulus.BFVDefault(4096,tc128)",
+  "plaintextModulus": 1032193,
+  "plaintextBitSize": 20,
+  "batchingSlots": 4096,
+  "encoding": "Each scalar repeated across every slot; release reads first slot; no independent pair SIMD packing",
+  "ciphertextsPerRecord": 9,
+  "attributes": [
+    "ABO A flag",
+    "ABO B flag",
+    "feature1",
+    "feature2",
+    "feature3",
+    "feature4",
+    "feature5",
+    "feature6",
+    "urgency"
+  ]
+}

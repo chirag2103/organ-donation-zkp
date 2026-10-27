@@ -1,3 +1,5 @@
+> Historical protocol-v1 evidence. Superseded by docs/PROTOCOL_V2.md and paper/evaluation-v2; do not use these claims or measurements for v2.
+
 # Evaluation Notes for Paper Section 4
 
 ## Experimental Setup

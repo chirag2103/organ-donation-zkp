@@ -1,0 +1,30 @@
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[
+  >=Stealth,
+  box/.style={draw,rounded corners,align=center,text width=3.4cm,minimum height=1.2cm,inner sep=4pt,font={\small\hyphenpenalty=10000\exhyphenpenalty=10000},fill=white},
+  labeltext/.style={font=\scriptsize,align=center,fill=white,inner sep=2pt}]
+\node[box] (admin) at (0,3) {Enrollment authority\\Administrator CLI};
+\node[box] (browser) at (5,3) {Participant browser\\Local proof worker\\Private credential};
+\node[box] (chain) at (10,3) {Local blockchain\\Role authorization\\Record lifecycle};
+\node[box] (db) at (0,0) {SQLite\\Members + keys\\Record maps + jobs};
+\node[box] (api) at (5,0) {Trusted API + BFV\\Encrypt + evaluate\\Release approved score};
+\node[box] (ipfs) at (10,0) {Kubo / IPFS\\AES-wrapped\\BFV record bundles};
+\node[box] (worker) at (5,-2.2) {Revocation worker\\Event replay + retries\\Cleanup + local keeper};
+\begin{pgfonlayer}{background}
+\node[draw,dashed,rounded corners,fit=(db)(api)(worker),inner sep=12pt,
+  label={[font=\scriptsize]below:Trusted service domain: plaintext registration inputs and general BFV secret available}] {};
+\end{pgfonlayer}
+\draw[->] (admin.north) -- ++(0,0.9) -| node[pos=.3,labeltext] {approved public roots} (chain.north);
+\draw[->] (admin) -- node[labeltext] {public membership\\data} (db);
+\draw[->] (browser) -- node[labeltext] {signed login / record IDs\\plaintext record inputs} (api);
+\draw[->] (browser) -- node[above,labeltext] {proof +\\wallet tx} (chain);
+\draw[<->] (api) -- node[labeltext] {keys /\\CIDs} (db);
+\draw[<->] (api) -- node[above,labeltext] {AES / BFV\\bundles} (ipfs);
+\draw[->] (api.north east) -- node[above,sloped,labeltext] {auth check} (chain.south west);
+\draw[<->] (api) -- node[right,labeltext] {cleanup state} (worker);
+\draw[->] (worker.west) -- node[below,sloped,labeltext] {durable cursor/jobs} (db.south);
+\draw[->] (worker.east) -- node[below,sloped,labeltext] {canonical unpin / GC} (ipfs.south);
+\draw[->] (chain.east) -- ++(0.65,0) |- node[pos=.6,right,labeltext] {confirmed\\lifecycle logs} (worker.south east);
+\node[font=\scriptsize,align=center] at (5,5.1) {Browser secret remains local; application origin is trusted};
+\end{tikzpicture}%
+}

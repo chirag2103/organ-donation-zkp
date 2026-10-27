@@ -1,0 +1,27 @@
+\paragraph{Measured local results.} Ten warmups and thirty measured samples were used for every repeated timing metric below. The table reports milliseconds; Node proving includes path construction and is not a browser latency measurement. Local receipt times exclude real-network consensus; direct cleanup excludes worker discovery and retry delay.
+\begin{center}\begin{tabular}{lrrr}\toprule Metric & Median (ms) & p95 (ms) & SD (ms)\\\midrule
+Approved-root enrollment & 38.58 & 45.93 & 4.69\\
+Membership witness construction & 47.82 & 50.29 & 1.01\\
+Node Groth16 proving & 2922.25 & 4318.04 & 1168.12\\
+Local authorization receipt & 10.45 & 11.76 & 0.86\\
+BFV record encryption & 115.16 & 131.60 & 8.89\\
+BFV policy evaluation & 230.73 & 244.98 & 7.60\\
+Permitted-result release & 10.47 & 16.85 & 2.76\\
+Encrypted storage round trip & 42.03 & 107.35 & 20.37\\
+Local revocation request receipt & 1.87 & 2.41 & 4.94\\
+Local deactivation receipt & 1.66 & 2.07 & 0.23\\
+Direct local cleanup & 22.62 & 31.28 & 5.13\\
+\bottomrule\end{tabular}\end{center}
+\paragraph{Verification gas.} Median real Groth16 verification plus authorization issuance: 310,463 gas (30 measured samples after ten warmups). Initial issuance, recorded separately: 367,339 gas; warmed samples reuse the same wallet session slot.
+\paragraph{Workload interpretation.} The plaintext baseline uses memory-resident synthetic data, while BFV uses real encrypted Kubo records. Differences include storage and protection costs; they do not isolate proof cost. Jobs use an established session, with proving and authorization measured separately rather than repeated per job. Job timings include 100-ms result polling, which affects small-workload latency. Raw samples and source/artifact identifiers accompany the evaluation.
+\begin{center}\begin{tabular}{llrrr}\toprule Baseline & Matrix & Median (ms) & p95 (ms) & SD (ms)\\\midrule
+Plaintext wallet RBAC & 1x1 & 134.88 & 146.71 & 6.54\\
+Plaintext wallet RBAC & 5x5 & 291.90 & 336.71 & 47.04\\
+Plaintext wallet RBAC & 10x10 & 862.31 & 1080.33 & 72.85\\
+BFV wallet RBAC & 1x1 & 384.68 & 599.39 & 85.15\\
+BFV wallet RBAC & 5x5 & 7203.02 & 7486.88 & 173.74\\
+BFV wallet RBAC & 10x10 & 11946.91 & 17289.18 & 1464.74\\
+BFV ZKP authorization & 1x1 & 164.48 & 198.90 & 11.34\\
+BFV ZKP authorization & 5x5 & 3292.05 & 3423.10 & 77.39\\
+BFV ZKP authorization & 10x10 & 12116.84 & 12406.25 & 148.14\\
+\bottomrule\end{tabular}\end{center}

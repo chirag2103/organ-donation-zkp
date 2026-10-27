@@ -1,3 +1,5 @@
+> Historical protocol-v1 evidence. Superseded by docs/PROTOCOL_V2.md and paper/evaluation-v2; do not use these claims or measurements for v2.
+
 # Comparison with Prior Work
 
 | Feature                          | This Work | Samsukha et al. [5] | Block-Privacy [BP] |

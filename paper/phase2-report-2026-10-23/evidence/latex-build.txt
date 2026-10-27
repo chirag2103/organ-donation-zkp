@@ -1,0 +1,45 @@
+note: using only cached resource files
+note: Running TeX ...
+Fontconfig error: Cannot load default config file: No such file: (null)
+warning: organ_donation_report_updated.tex:72: Underfull \hbox (badness 1062) in paragraph at lines 51--72
+warning: organ_donation_report_updated.tex:152: Underfull \hbox (badness 10000) in paragraph at lines 145--152
+warning: organ_donation_report_updated.tex:198: Underfull \hbox (badness 8019) in paragraph at lines 195--198
+warning: organ_donation_report_updated.tex:231: Underfull \hbox (badness 6380) in paragraph at lines 229--231
+warning: organ_donation_report_updated.tex:266: Underfull \hbox (badness 10000) in paragraph at lines 261--266
+warning: organ_donation_report_updated.tex:395: Underfull \hbox (badness 1454) in paragraph at lines 389--395
+warning: organ_donation_report_updated.tex:432: Underfull \hbox (badness 4686) in paragraph at lines 423--432
+warning: organ_donation_report_updated.tex:432: Underfull \hbox (badness 1762) in paragraph at lines 423--432
+warning: organ_donation_report_updated.tex:442: Underfull \hbox (badness 10000) in paragraph at lines 434--442
+warning: organ_donation_report_updated.tex:442: Underfull \hbox (badness 10000) in paragraph at lines 434--442
+warning: organ_donation_report_updated.tex:464: Underfull \hbox (badness 2065) in paragraph at lines 459--464
+warning: organ_donation_report_updated.tex:474: Underfull \hbox (badness 1742) in paragraph at lines 466--474
+warning: organ_donation_report_updated.tex:487: Underfull \hbox (badness 10000) in paragraph at lines 482--487
+warning: organ_donation_report_updated.tex:562: Underfull \hbox (badness 1852) in paragraph at lines 557--562
+warning: organ_donation_report_updated.tex:589: Underfull \hbox (badness 1661) in paragraph at lines 583--589
+warning: organ_donation_report_updated.tex:629: Underfull \hbox (badness 1077) in paragraph at lines 622--629
+note: Running BibTeX on organ_donation_report_updated.aux ...
+note: Rerunning TeX because bibtex was run ...
+warning: organ_donation_report_updated.tex:72: Underfull \hbox (badness 1062) in paragraph at lines 51--72
+warning: organ_donation_report_updated.tex:152: Underfull \hbox (badness 10000) in paragraph at lines 145--152
+warning: organ_donation_report_updated.tex:198: Underfull \hbox (badness 8019) in paragraph at lines 195--198
+warning: organ_donation_report_updated.tex:231: Underfull \hbox (badness 6380) in paragraph at lines 229--231
+warning: organ_donation_report_updated.tex:266: Underfull \hbox (badness 10000) in paragraph at lines 261--266
+warning: organ_donation_report_updated.tex:395: Underfull \hbox (badness 1454) in paragraph at lines 389--395
+warning: organ_donation_report_updated.tex:432: Underfull \hbox (badness 4686) in paragraph at lines 423--432
+warning: organ_donation_report_updated.tex:432: Underfull \hbox (badness 1762) in paragraph at lines 423--432
+warning: organ_donation_report_updated.tex:442: Underfull \hbox (badness 10000) in paragraph at lines 434--442
+warning: organ_donation_report_updated.tex:442: Underfull \hbox (badness 10000) in paragraph at lines 434--442
+warning: organ_donation_report_updated.tex:464: Underfull \hbox (badness 2065) in paragraph at lines 459--464
+warning: organ_donation_report_updated.tex:474: Underfull \hbox (badness 1742) in paragraph at lines 466--474
+warning: organ_donation_report_updated.tex:487: Underfull \hbox (badness 10000) in paragraph at lines 482--487
+warning: organ_donation_report_updated.tex:562: Underfull \hbox (badness 1852) in paragraph at lines 557--562
+warning: organ_donation_report_updated.tex:589: Underfull \hbox (badness 1661) in paragraph at lines 583--589
+warning: organ_donation_report_updated.tex:629: Underfull \hbox (badness 1077) in paragraph at lines 622--629
+warning: warnings were issued by the TeX engine; use --print and/or --keep-logs for details.
+note: Running xdvipdfmx ...
+note: Writing `organ_donation_report_updated.out` (6.7041015625 KiB)
+note: Writing `organ_donation_report_updated.log` (27.7021484375 KiB)
+note: Writing `organ_donation_report_updated.aux` (10.0927734375 KiB)
+note: Writing `organ_donation_report_updated.blg` (404 B)
+note: Writing `organ_donation_report_updated.pdf` (114.9775390625 KiB)
+note: Writing `organ_donation_report_updated.bbl` (3.361328125 KiB)

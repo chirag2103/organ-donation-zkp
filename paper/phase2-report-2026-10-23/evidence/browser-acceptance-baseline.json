@@ -1,0 +1,20 @@
+{
+  "startedAt": "2026-10-22T13:53:51.518Z",
+  "checks": [
+    "unapproved browser credential rejected",
+    "real browser-worker proof and wallet-signature authentication",
+    "browser registration, encrypted Kubo upload and opaque on-chain anchors",
+    "BFV matching over retrieved encrypted records",
+    "API session, BFV secret and record keys survive process restart",
+    "authorized batch ranking",
+    "browser surgeon revocation and real local IPFS cleanup",
+    "recipient revocation while service offline recovered from event cursor",
+    "approved Transporter authenticates without clinical access",
+    "missing database fails closed when on-chain records exist",
+    "no credential secret transmitted to API"
+  ],
+  "infrastructure": "real local Hardhat + isolated Kubo + Edge browser",
+  "completedAt": "2026-10-22T13:54:18.443Z",
+  "passed": true,
+  "browser": "155.0.4283.62"
+}

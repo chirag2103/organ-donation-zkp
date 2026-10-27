@@ -1,3 +1,4 @@
+require('./server/config');
 require('@nomicfoundation/hardhat-toolbox');
 require('@nomicfoundation/hardhat-network-helpers');
 
@@ -15,6 +16,7 @@ module.exports = {
   },
 
   networks: {
+    e2e: { url: 'http://127.0.0.1:18545', chainId: 31337 },
     // ── Local Hardhat node (default) ──────────────────────────────────────
     localhost: {
       url: 'http://127.0.0.1:8545',
@@ -80,7 +82,7 @@ module.exports = {
   // Paths
   paths: {
     sources:   './contracts',
-    tests:     './test',
+    tests:     './test/v2',
     cache:     './cache',
     artifacts: './artifacts',
   },

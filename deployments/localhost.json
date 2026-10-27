@@ -1,4 +1,5 @@
 {
+  "protocolVersion": 2,
   "network": "localhost",
   "chainId": 31337,
   "Groth16Verifier": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
@@ -8,13 +9,6 @@
   "OrganRegistry": "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9",
   "LifecycleManager": "0x5FC8d32690cc91D4c39d9d3abcBD16989F875707",
   "deployer": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
-  "deployedAt": "2026-09-03T12:34:56.353Z",
-  "testMerkleRoots": {
-    "DOCTOR": "0x1a2b3c4d5e6f7080919293949596979899a0a1a2a3a4a5a6a7a8a9aaabacadae",
-    "COORDINATOR": "0x2b3c4d5e6f7080919293949596979899a0a1a2a3a4a5a6a7a8a9aaabacadaeb0",
-    "PROCUREMENT": "0x3c4d5e6f7080919293949596979899a0a1a2a3a4a5a6a7a8a9aaabacadaeb0c1",
-    "MATCHING": "0x4d5e6f7080919293949596979899a0a1a2a3a4a5a6a7a8a9aaabacadaeb0c1d2",
-    "TRANSPORTER": "0x5e6f7080919293949596979899a0a1a2a3a4a5a6a7a8a9aaabacadaeb0c1d2e3",
-    "SURGEON": "0x6f7080919293949596979899a0a1a2a3a4a5a6a7a8a9aaabacadaeb0c1d2e3f4"
-  }
+  "deployedBlock": 7,
+  "deployedBlockHash": "0x6dd13517b70eff7fa7ba4797332ca0dfbdbe14ab7ce7a101b459a0d916e446e5"
 }

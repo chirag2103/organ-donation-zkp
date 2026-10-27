@@ -1,2 +1,14 @@
-/artifacts
-node_modules
+node_modules/
+artifacts/
+cache/
+dist/
+runtime/
+.env
+.env.*
+!.env.example
+*.sqlite*
+*.log
+historical/*.zip
+src/public/zkp/
+test-results/
+playwright-report/

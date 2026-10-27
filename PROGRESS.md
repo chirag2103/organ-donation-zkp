@@ -1,3 +1,5 @@
+> Historical protocol-v1 evidence. Superseded by docs/PROTOCOL_V2.md and paper/evaluation-v2; do not use these claims or measurements for v2.
+
 # ZKP-PFE Organ Donation System — Build Progress & Workflow Reference
 
 > **Last updated:** 2026-08-26  

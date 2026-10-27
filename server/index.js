@@ -1,444 +1,106 @@
-'use strict';
-
-/**
- * server/index.js
- * ─────────────────────────────────────────────────────────────────────────────
- * Express API server for the ZKP-Authenticated PFE-Gated Organ Donation System.
- *
- * Endpoints:
- *   POST /api/zkp/generate       — Off-chain proof generation
- *   POST /api/pfe/encrypt        — Encrypt donor/recipient attributes
- *   POST /api/pfe/score          — Compute encrypted compatibility score
- *   POST /api/pfe/decrypt        — Decrypt score with role key
- *   POST /api/ipfs/upload        — Upload encrypted record to IPFS
- *   DELETE /api/ipfs/unpin/:cid  — GDPR Article 17 erasure
- *   GET  /api/status             — Health check
- *
- * SECURITY:
- *   - Credentials and private inputs are NEVER logged
- *   - Master secret is in-memory only
- *   - CORS is restricted to configured origins
- * ─────────────────────────────────────────────────────────────────────────────
- */
-
-const express     = require('express');
-const cors        = require('cors');
-const helmet      = require('helmet');
-const rateLimit   = require('express-rate-limit');
-const { ethers }  = require('ethers');
-const path        = require('path');
-const fs          = require('fs');
-
-const zkpService  = require('./zkpService');
-const pfeService  = require('./pfeService');
-const ipfsService = require('./ipfsService');
-
-// ── App setup ──────────────────────────────────────────────────────────────
-const app  = express();
-const PORT = process.env.PORT || 3001;
-
-// ── Security middleware ────────────────────────────────────────────────────
-app.use(helmet());
-app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
-  methods: ['GET', 'POST', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-}));
-app.use(express.json({ limit: '5mb' }));
-
-// Rate limiting — prevent brute-force ZKP submission
-const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max:      100,
-  message:  { error: 'Too many requests — please try again later.' },
-  standardHeaders: true,
-  legacyHeaders:   false,
-});
-app.use('/api/', apiLimiter);
-
-// ── Load deployment addresses ──────────────────────────────────────────────
-function loadDeployments() {
-  const p = path.join(__dirname, '..', 'deployments', 'localhost.json');
-  if (!fs.existsSync(p)) return null;
-  return JSON.parse(fs.readFileSync(p, 'utf8'));
-}
-
-// ── ZKP endpoint ─────────────────────────────────────────────────────────
-/**
- * POST /api/zkp/generate
- * Body: { credential, roleId, salt, merkleRoot, pathElements[20], pathIndices[20] }
- * Response: { proof: { a, b, c }, publicInputs }
- *
- * SECURITY: credential and salt are private — response contains ONLY proof + publicInputs.
- */
-app.post('/api/zkp/generate', async (req, res) => {
-  const { credential, roleId, salt, merkleRoot, pathElements, pathIndices } = req.body;
-
-  // Validate required fields
-  if (!credential || roleId === undefined || !salt || !merkleRoot ||
-      !Array.isArray(pathElements) || !Array.isArray(pathIndices)) {
-    return res.status(400).json({ error: 'Missing required fields' });
-  }
-  if (pathElements.length !== 20 || pathIndices.length !== 20) {
-    return res.status(400).json({ error: 'pathElements and pathIndices must have 20 elements' });
-  }
-  if (typeof roleId !== 'number' || roleId < 0 || roleId > 5) {
-    return res.status(400).json({ error: 'roleId must be 0–5' });
-  }
-
-  try {
-    const result = await zkpService.generateProof({
-      credential,
-      roleId,
-      salt,
-      merkleRoot,
-      pathElements,
-      pathIndices,
-    });
-    res.json(result);
-  } catch (err) {
-    console.error('[ZKP] Proof generation error:', err.message);
-    res.status(500).json({ error: 'Proof generation failed', detail: err.message });
-  }
-});
-
-// ── ZKP generate-and-register (all-in-one for UI) ────────────────────────────
-/**
- * POST /api/zkp/generate-and-register
- * Body: { credential: hex, roleId: number, salt: hex }
- *
- * Server-side flow:
- *   1. Build 20-level Poseidon Merkle tree with credential as leaf[0]
- *   2. Register computed root on-chain via RoleRegistry (deployer key)
- *   3. Generate Groth16 proof with the real Merkle path
- *   4. Return proof + publicInputs (credential and salt are NEVER in response)
- *
- * SECURITY: credential and salt are private — response contains ONLY proof + publicInputs.
- */
-app.post('/api/zkp/generate-and-register', async (req, res) => {
-  const { credential, roleId, salt } = req.body;
-  if (!credential || roleId === undefined || !salt) {
-    return res.status(400).json({ error: 'Missing credential, roleId, or salt' });
-  }
-  if (typeof roleId !== 'number' || roleId < 0 || roleId > 5) {
-    return res.status(400).json({ error: 'roleId must be 0–5' });
-  }
-
-  try {
-    const deployments = loadDeployments();
-    if (!deployments) return res.status(503).json({ error: 'Contracts not deployed' });
-
-    const DEPLOYER_KEY = process.env.DEPLOYER_KEY ||
-      '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
-    const RPC_URL = process.env.RPC_URL || 'http://127.0.0.1:8545';
-
-    const result = await zkpService.generateAndRegister({
-      credential,
-      roleId,
-      salt,
-      rpcUrl:           RPC_URL,
-      deployerKey:      DEPLOYER_KEY,
-      roleRegistryAddr: deployments.RoleRegistry,
-    });
-
-    res.json(result);
-  } catch (err) {
-    console.error('[ZKP] generate-and-register error:', err.message);
-    res.status(500).json({ error: 'Proof generation failed', detail: err.message });
-  }
-});
-
-
-// ── PFE encrypt endpoint ──────────────────────────────────────────────────
-/**
- * POST /api/pfe/encrypt
- * Body: { bloodType (0-7 index, see BLOOD_TYPES in DonorRegister.jsx),
- *         hlaScore (0.0–1.0), urgency (0.0–1.0) }
- * Response: { ciphertexts: { ctIsA, ctIsB, ctIsRhPos, ctHla, ctUrgency }, encryptedRecord }
- */
-app.post('/api/pfe/encrypt', async (req, res) => {
-  const { bloodType, hlaScore, urgency, roleId, keyCommitment } = req.body;
-
-  if (bloodType === undefined || hlaScore === undefined || urgency === undefined) {
-    return res.status(400).json({ error: 'Missing bloodType, hlaScore, or urgency' });
-  }
-  if (!Number.isInteger(bloodType) || bloodType < 0 || bloodType > 7) {
-    return res.status(400).json({ error: 'bloodType must be an integer 0-7' });
-  }
-  if (typeof hlaScore !== 'number' || hlaScore < 0 || hlaScore > 1) {
-    return res.status(400).json({ error: 'hlaScore must be 0.0–1.0' });
-  }
-  if (typeof urgency !== 'number' || urgency < 0 || urgency > 1) {
-    return res.status(400).json({ error: 'urgency must be 0.0–1.0' });
-  }
-
-  try {
-    // bloodType is passed through as the real 0-7 category — pfeService
-    // decomposes it into (isA, isB, isRhPos) for real ABO/Rh compatibility
-    // scoring, rather than collapsing it to a single "is it A+" bit.
-    const ciphertexts = pfeService.encryptAttributes(bloodType, hlaScore, urgency);
-
-    // Derive role key if provided (for AES wrapping)
-    let encryptedRecord = null;
-    if (roleId !== undefined && keyCommitment) {
-      const roleKey     = await pfeService.issueRoleScopedKey(roleId, keyCommitment);
-      const bundle      = JSON.stringify({ ...ciphertexts, ts: Date.now() });
-      encryptedRecord   = pfeService.encryptWithRoleKey(bundle, roleKey);
-    }
-
-    res.json({ ciphertexts, encryptedRecord });
-  } catch (err) {
-    console.error('[PFE] Encrypt error:', err.message);
-    res.status(500).json({ error: 'Encryption failed', detail: err.message });
-  }
-});
-
-// ── PFE score endpoint ────────────────────────────────────────────────────
-/**
- * POST /api/pfe/score
- * Body: { donorCts, recipCts, W }
- * Response: { encryptedScore: base64 }
- */
-app.post('/api/pfe/score', async (req, res) => {
-  const { donorCts, recipCts, W } = req.body;
-
-  if (!donorCts || !recipCts) {
-    return res.status(400).json({ error: 'Missing donorCts or recipCts' });
-  }
-
-  try {
-    const weight = W !== undefined ? W : 100;
-    const encryptedScore = pfeService.computeCompatibilityScore(donorCts, recipCts, weight);
-    res.json({ encryptedScore });
-  } catch (err) {
-    console.error('[PFE] Score error:', err.message);
-    res.status(500).json({ error: 'Score computation failed', detail: err.message });
-  }
-});
-
-// ── PFE decrypt endpoint ──────────────────────────────────────────────────
-/**
- * POST /api/pfe/decrypt
- * Body: { encryptedScore: base64, roleId, keyCommitment }
- * Response: { score: number (0–1000) }
- */
-app.post('/api/pfe/decrypt', async (req, res) => {
-  const { encryptedScore, roleId, keyCommitment } = req.body;
-
-  if (!encryptedScore || roleId === undefined || !keyCommitment) {
-    return res.status(400).json({ error: 'Missing encryptedScore, roleId, or keyCommitment' });
-  }
-
-  try {
-    const score = pfeService.decryptScore(encryptedScore);
-    res.json({ score });
-  } catch (err) {
-    console.error('[PFE] Decrypt error:', err.message);
-    res.status(500).json({ error: 'Decryption failed', detail: err.message });
-  }
-});
-
-// ── IPFS upload endpoint ──────────────────────────────────────────────────
-/**
- * POST /api/ipfs/upload
- * Body: { encryptedRecord: base64, donorId?: number }
- * Response: { cid: string }
- */
-app.post('/api/ipfs/upload', async (req, res) => {
-  const { encryptedRecord, donorId } = req.body;
-
-  if (!encryptedRecord) {
-    return res.status(400).json({ error: 'Missing encryptedRecord' });
-  }
-
-  try {
-    const buf    = Buffer.from(encryptedRecord, 'base64');
-    const result = await ipfsService.uploadEncryptedRecord(buf);
-
-    // Register CID if donorId provided
-    if (donorId !== undefined) {
-      ipfsService.registerCID(donorId, result.cid);
-    }
-
-    res.json({ cid: result.cid });
-  } catch (err) {
-    console.error('[IPFS] Upload error:', err.message);
-    res.status(500).json({ error: 'IPFS upload failed', detail: err.message });
-  }
-});
-
-// ── IPFS download endpoint (raw ciphertext bundle, no AES layer) ──────────
-/**
- * GET /api/ipfs/download/:cid
- * Response: { ct1: base64, ct2: base64, ct3: base64, ts: number }
- *
- * Fetches the PFE ciphertext bundle a donor/recipient registration uploaded
- * (see DonorRegister.jsx / RecipientRegister.jsx) so CompatibilityScore can
- * compute a real homomorphic score instead of demo placeholder ciphertexts.
- */
-app.get('/api/ipfs/download/:cid', async (req, res) => {
-  const { cid } = req.params;
-  if (!cid) return res.status(400).json({ error: 'Missing CID' });
-
-  try {
-    const buf = await ipfsService.downloadRawRecord(cid);
-    const bundle = JSON.parse(buf.toString('utf8'));
-    res.json(bundle);
-  } catch (err) {
-    console.error('[IPFS] Download error:', err.message);
-    res.status(500).json({ error: 'IPFS download failed', detail: err.message });
-  }
-});
-
-// ── IPFS unpin endpoint ───────────────────────────────────────────────────
-/**
- * DELETE /api/ipfs/unpin/:cid
- * Response: { success: boolean }
- */
-app.delete('/api/ipfs/unpin/:cid', async (req, res) => {
-  const { cid } = req.params;
-  if (!cid) return res.status(400).json({ error: 'Missing CID' });
-
-  try {
-    const result = await ipfsService.unpinRecord(cid);
-    res.json(result);
-  } catch (err) {
-    console.error('[IPFS] Unpin error:', err.message);
-    res.status(500).json({ error: 'Unpin failed', detail: err.message });
-  }
-});
-
-// ── Status / health check ─────────────────────────────────────────────────
-/**
- * GET /api/status
- * Response: { ipfs: bool, blockchain: bool, seal: bool }
- */
-app.get('/api/status', async (req, res) => {
-  const [ipfsOk, blockchainOk] = await Promise.all([
-    ipfsService.checkIPFS(),
-    (async () => {
-      try {
-        const deployments = loadDeployments();
-        if (!deployments) return false;
-        const provider = new ethers.JsonRpcProvider(
-          process.env.RPC_URL || 'http://127.0.0.1:8545'
-        );
-        await provider.getBlockNumber();
-        return true;
-      } catch { return false; }
-    })(),
-  ]);
-
-  res.json({
-    ipfs:       ipfsOk,
-    blockchain: blockchainOk,
-    seal:       true, // SEAL is synchronously initialised at startup
-    timestamp:  new Date().toISOString(),
-  });
-});
-
-// ── [DEV ONLY] Register a Merkle root for a role ─────────────────────────
-/**
- * POST /api/dev/register-root
- * Body: { roleId: number, merkleRoot: string (hex) }
- * Response: { txHash, block, registeredRoot }
- *
- * Uses Hardhat Account #0 (deployer) private key to call
- * RoleRegistry.registerCredentialRoot(roleId, merkleRoot) on-chain.
- *
- * In production, this would be a separate admin tool with HSM-protected key.
- * Here it exists so the dev demo can register a user's real Merkle root before proof.
- */
-app.post('/api/dev/register-root', async (req, res) => {
-  const { roleId, merkleRoot } = req.body;
-  if (roleId === undefined || !merkleRoot) {
-    return res.status(400).json({ error: 'Missing roleId or merkleRoot' });
-  }
-  if (typeof roleId !== 'number' || roleId < 0 || roleId > 5) {
-    return res.status(400).json({ error: 'roleId must be 0-5' });
-  }
-  if (!/^0x[0-9a-fA-F]{64}$/.test(merkleRoot)) {
-    return res.status(400).json({ error: 'merkleRoot must be a 32-byte hex string (0x + 64 hex chars)' });
-  }
-  try {
-    const deployments = loadDeployments();
-    if (!deployments) return res.status(503).json({ error: 'Contracts not deployed' });
-
-    // Hardhat Account #0 — deployer / contract owner
-    const DEPLOYER_KEY = process.env.DEPLOYER_KEY ||
-      '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
-
-    const provider = new ethers.JsonRpcProvider(
-      process.env.RPC_URL || 'http://127.0.0.1:8545'
+"use strict";
+const fs = require("fs"),
+  path = require("path");
+const { config } = require("./config");
+const { Chain } = require("./chain");
+const { Store } = require("./store");
+const { wrappingKey } = require("./crypto");
+const { BfvService } = require("./bfvService");
+const { IpfsStorage } = require("./storage");
+const { Auth } = require("./auth");
+const { RecordService } = require("./service");
+const { RevocationWorker } = require("./revocation");
+const { createApp } = require("./app");
+async function start(overrides = {}) {
+  if (process.env.ADMIN_PRIVATE_KEY)
+    throw Error(
+      "Start the API without ADMIN_PRIVATE_KEY; use a separate administrator process"
     );
-    const signer = new ethers.Wallet(DEPLOYER_KEY, provider);
-
-    const roleRegABI = [
-      'function registerCredentialRoot(uint8 roleId, bytes32 merkleRoot) external',
-      'function getRoleRoot(uint8 roleId) view returns (bytes32)',
-    ];
-    const roleRegistry = new ethers.Contract(deployments.RoleRegistry, roleRegABI, signer);
-
-    // Check if root already registered (avoid unnecessary tx)
-    const currentRoot = await roleRegistry.getRoleRoot(roleId);
-    if (currentRoot.toLowerCase() === merkleRoot.toLowerCase()) {
-      return res.json({ message: 'Root already registered', registeredRoot: merkleRoot, txHash: null });
-    }
-
-    const tx = await roleRegistry.registerCredentialRoot(roleId, merkleRoot);
-    const receipt = await tx.wait();
-    console.log(`[DEV] Registered Merkle root for role ${roleId}: ${merkleRoot.slice(0,18)}... tx=${tx.hash.slice(0,12)}...`);
-
-    res.json({
-      txHash:         tx.hash,
-      block:          receipt.blockNumber,
-      registeredRoot: merkleRoot,
-    });
-  } catch (err) {
-    console.error('[DEV] register-root error:', err.message);
-    res.status(500).json({ error: err.message });
+  const cfg = config(overrides),
+    chain = new Chain(cfg);
+  await chain.validate();
+  const manifest = JSON.parse(
+    fs.readFileSync(path.join(cfg.root, "src/public/zkp/v2/manifest.json"))
+  );
+  const namespace = chain.deployment.deployedBlockHash.slice(2, 18);
+  const store = new Store(path.join(cfg.dataDir, namespace, "service.sqlite"));
+  if (!store.get("keys", "bfv-v1") && (await chain.hasRecords())) {
+    store.close();
+    chain.close();
+    throw Error(
+      "Existing on-chain records but BFV key metadata is missing; restore the database backup"
+    );
   }
-});
-
-// ── 404 handler ───────────────────────────────────────────────────────────
-app.use((req, res) => {
-  res.status(404).json({ error: 'Endpoint not found' });
-});
-
-// ── Error handler ─────────────────────────────────────────────────────────
-app.use((err, req, res, next) => {
-  console.error('[SERVER] Unhandled error:', err.message);
-  res.status(500).json({ error: 'Internal server error' });
-});
-
-// ── Startup ───────────────────────────────────────────────────────────────
-async function start() {
-  try {
-    // Initialise services
-    await zkpService.initZKP();
-    await pfeService.initPFE();
-    await ipfsService.initIPFS(process.env.IPFS_API_URL || 'http://127.0.0.1:5001');
-
-    // Start blockchain event listener if deployment addresses exist
-    const deployments = loadDeployments();
-    if (deployments && deployments.LifecycleManager) {
-      await ipfsService.startRevocationListener(
-        deployments.LifecycleManager,
-        process.env.RPC_URL || 'http://127.0.0.1:8545'
-      );
-    } else {
-      console.warn('[SERVER] No deployment addresses found — revocation listener inactive');
-    }
-
-    app.listen(PORT, () => {
-      console.log('[SERVER] ZKP Organ Donation API running on port %d', PORT);
+  const binding = store.get("meta", "deployment");
+  if (binding && binding.hash !== chain.deployment.deployedBlockHash)
+    throw Error("Data belongs to another deployment");
+  store.put("meta", "deployment", { hash: chain.deployment.deployedBlockHash });
+  const key = wrappingKey(cfg.wrappingKey),
+    bfv = await new BfvService().init(store, key);
+  const storage = await new IpfsStorage().init(cfg.ipfsUrl),
+    protocol = await import("../shared/protocol.mjs");
+  const auth = new Auth(store, chain, cfg.origin),
+    records = new RecordService({
+      store,
+      chain,
+      storage,
+      bfv,
+      wrappingKey: key,
+      protocol,
     });
-  } catch (err) {
-    console.error('[SERVER] Startup failed:', err);
-    process.exit(1);
+  const worker = new RevocationWorker({
+    store,
+    chain,
+    storage,
+    confirmations: cfg.confirmations,
+  });
+  const app = createApp({
+    config: cfg,
+    store,
+    chain,
+    auth,
+    records,
+    storage,
+    protocol,
+    manifest,
+  });
+  const server = app.listen(cfg.port, "127.0.0.1", () =>
+    console.log(
+      "Research v2 API listening on loopback port",
+      server.address().port
+    )
+  );
+  const tick = async () => {
+    try {
+      await worker.tick();
+      await chain.keeper();
+    } catch (e) {
+      console.error("Worker unavailable; durable jobs will retry");
+    }
+  };
+  const timer = setInterval(tick, 5000);
+  await tick();
+  let closing = false;
+  async function close() {
+    if (closing) return;
+    closing = true;
+    clearInterval(timer);
+    await new Promise((resolve) => server.close(resolve));
+    chain.close();
+    bfv.close();
+    store.close();
+    key.fill(0);
   }
+  return { app, server, store, chain, bfv, records, worker, close };
 }
-
-start();
-
-module.exports = app; // export for testing
+if (require.main === module)
+  start()
+    .then((runtime) => {
+      for (const signal of ["SIGINT", "SIGTERM"])
+        process.on(signal, () => runtime.close().then(() => process.exit(0)));
+    })
+    .catch((e) => {
+      console.error("Startup failed:", e.message);
+      process.exit(1);
+    });
+module.exports = { start };

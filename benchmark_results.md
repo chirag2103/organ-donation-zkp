@@ -1,3 +1,5 @@
+> Historical protocol-v1 evidence. Superseded by docs/PROTOCOL_V2.md and paper/evaluation-v2; do not use these claims or measurements for v2.
+
 # Benchmark Results
 
 Run at: 2026-08-29T19:49:44.302Z

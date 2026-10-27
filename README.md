@@ -1,382 +1,124 @@
-# ZKP-Authenticated PFE-Gated Organ Donation System
+# ZKP-Authorized Homomorphic Matching and Auditable Record Revocation
 
-> **Novel Research Contribution**: First system to integrate **ZKP role authentication** gating **PFE functional key issuance** on **IPFS-backed organ records** with GDPR Article 17 lifecycle management.
+Synthetic research prototype, protocol v2. The backend is a **trusted BFV encryption/decryption service**. Browser Groth16 proofs authorize approved role membership; they do not hide wallet activity. This is not functional encryption, clinical allocation or a GDPR compliance determination.
 
-[![Solidity](https://img.shields.io/badge/Solidity-0.8.20-blue)](https://soliditylang.org)
-[![Hardhat](https://img.shields.io/badge/Hardhat-2.x-yellow)](https://hardhat.org)
-[![circom](https://img.shields.io/badge/circom-2.0-green)](https://docs.circom.io)
-[![snarkjs](https://img.shields.io/badge/snarkjs-Groth16-purple)](https://github.com/iden3/snarkjs)
-[![SEAL](https://img.shields.io/badge/SEAL-BFV-red)](https://github.com/microsoft/SEAL)
-[![IPFS](https://img.shields.io/badge/IPFS-kubo-teal)](https://ipfs.tech)
-[![License: MIT](https://img.shields.io/badge/License-MIT-lightgrey)](LICENSE)
+The authoritative behavior, interfaces, trust model and equation are in [docs/PROTOCOL_V2.md](docs/PROTOCOL_V2.md). The prior prototype is preserved by commit and local archive in [historical/README.md](historical/README.md).
 
----
+## Requirements
 
-## Overview
+- Windows, Node 22.19.x, npm 10; the built-in SQLite API emits an experimental warning.
+- Existing `circom.exe` and `circomlib` for circuit rebuilding.
+- Kubo (`ipfs.exe`) for real encrypted storage; provide `IPFS_BINARY` if it is not on PATH.
+- MetaMask or a compatible wallet for manual use. The automated demo uses installed Edge through Playwright and a development-wallet adapter.
+- The local Hardhat mnemonic/accounts are public test fixtures. Never use their keys on real networks or expose the development RPC publicly.
 
-This system implements a **privacy-preserving organ donation and transplantation platform** where:
+## Prepare once
 
-1. **Participants prove their role** (doctor, surgeon, transporter, etc.) using **Zero-Knowledge Proofs** — without revealing their on-chain identity (GDPR pseudonymisation)
-2. **Smart contracts** verify ZKP proofs on-chain and issue **role-scoped Polynomial Functional Encryption (PFE) functional keys**
-3. **Donor/recipient records** are stored as **PFE ciphertexts on IPFS**; only the `keccak256(CID)` is stored on-chain
-4. A **lifecycle manager** contract handles GDPR Article 17 post-transplant record revocation via IPFS unpinning
-
----
-
-## Novelty vs. Prior Work
-
-| Feature | Samsukha 2025 (CSITSS) | Block-Privacy 2023 (IFIPIoT) | **This System** |
-|---------|----------------------|------------------------------|-----------------|
-| ZKP Role Auth | ✗ | ✓ (generic IoMT) | ✓ (role-gated) |
-| PFE/FE | ✓ (matching only) | ✓ (generic) | ✓ (polynomial scoring) |
-| IPFS Backend | ✗ | ✓ | ✓ |
-| Organ Polynomial Score | ✓ | ✗ | ✓ |
-| ZKP gates PFE key issuance | ✗ | ✗ | ✅ **Novel** |
-| GDPR Art. 17 Lifecycle | ✗ | ✗ | ✅ **Novel** |
-| Clinical Variables (HLA, urgency) | Partial | ✗ | ✓ |
-
----
-
-## Architecture
-
-```
-Browser (React + Vite)
-  ↓ MetaMask / ethers.js v6
-  ↓ REST API (HTTPS)
-Express Backend (Node.js 20)
-  ├── zkpService.js   → snarkjs Groth16 proof generation
-  ├── pfeService.js   → node-seal BFV + HKDF-SHA256 key derive
-  └── ipfsService.js  → kubo IPFS + RevocationExecuted listener
-  ↓ on-chain calls
-Private PoA Ethereum (Hardhat / Ganache)
-  ├── ZKPVerifier.sol        ← Groth16 BN128 verifier
-  ├── RoleRegistry.sol       ← Merkle root + permission bitmask store
-  ├── PFEKeyIssuer.sol       ← ZKP-gated key issuance (4h TTL)
-  ├── OrganRegistry.sol      ← Encrypted CID commitment registry
-  └── LifecycleManager.sol   ← GDPR Article 17 revocation
-```
-
----
-
-## Project Structure
-
-```
-organ-donation-zkp/
-├── contracts/
-│   ├── ZKPVerifier.sol          # Groth16 on-chain verifier (~220k gas)
-│   ├── MockZKPVerifier.sol      # Test mock
-│   ├── RoleRegistry.sol         # 6 roles + permission bitmasks
-│   ├── PFEKeyIssuer.sol         # ZKP-gated key issuance + nullifier replay guard
-│   ├── OrganRegistry.sol        # Donor/recipient encrypted CID registry
-│   └── LifecycleManager.sol     # GDPR Article 17 revocation lifecycle
-├── circuits/
-│   ├── roleProof.circom         # ZKP circuit (Poseidon + Merkle, 20 levels)
-│   └── build/                   # Compiled .r1cs, .wasm, .zkey (after setup)
-├── scripts/
-│   ├── deploy.js                # Sequential deployment + address export
-│   ├── generateProof.js         # CLI proof generation
-│   └── setupCeremony.js         # Groth16 Powers of Tau + phase 2 ceremony
-├── server/
-│   ├── index.js                 # Express API (helmet + rate limiting)
-│   ├── zkpService.js            # Off-chain Groth16 proof generation
-│   ├── pfeService.js            # SEAL BFV + HKDF key derivation
-│   └── ipfsService.js           # IPFS + blockchain revocation listener
-├── src/
-│   ├── App.jsx                  # Main shell + tab navigation
-│   ├── main.jsx
-│   ├── index.html
-│   ├── index.css                # Dark glassmorphism design system
-│   ├── components/
-│   │   ├── RoleAuth.jsx         # ZKP proof submit + key display
-│   │   ├── DonorRegister.jsx    # Encrypt + IPFS + on-chain register
-│   │   ├── CompatibilityScore.jsx  # Fetch + decrypt + display score
-│   │   └── LifecyclePanel.jsx   # Revocation management
-│   └── utils/
-│       ├── zkp.js               # snarkjs proof generation wrapper
-│       ├── pfe.js               # SEAL encrypt/decrypt/key derive
-│       └── ipfs.js              # IPFS upload/download/unpin
-├── test/
-│   ├── zkpVerifier.test.js
-│   ├── roleRegistry.test.js
-│   ├── pfeKeyIssuer.test.js
-│   ├── organRegistry.test.js
-│   └── lifecycle.test.js
-├── deployments/                 # Auto-generated by deploy.js
-│   └── localhost.json
-├── hardhat.config.js
-├── package.json
-├── vite.config.js
-└── README.md
-```
-
----
-
-## Prerequisites
-
-- **Node.js** ≥ 20.0.0
-- **npm** ≥ 9.0.0
-- **circom** (for circuit compilation): `npm install -g circom`
-- **kubo IPFS daemon**: [Install kubo](https://docs.ipfs.tech/install/command-line/)
-- **MetaMask** browser extension
-
----
-
-## Quick Start
-
-### 1. Install dependencies
-
-```bash
-cd organ-donation-zkp
-npm install
-```
-
-### 2. Compile contracts
-
-```bash
-npm run compile
-```
-
-### 3. Start local Hardhat node
-
-```bash
-npm run node
-```
-
-### 4. Deploy contracts
-
-```bash
-npm run deploy:local
-```
-
-### 5. (Optional) Compile ZKP circuit and run ceremony
-
-> Requires `circom` installed globally.
-
-```bash
-# Compile circuit
-circom circuits/roleProof.circom --r1cs --wasm --sym -o circuits/build
-
-# Run Groth16 trusted setup (Powers of Tau + phase 2)
+```powershell
+npm ci
+npm run init:local
+npm run circuit:compile
 npm run ceremony
-
-# Replace ZKPVerifier.sol with the auto-generated one
-cp contracts/ZKPVerifier_generated.sol contracts/ZKPVerifier.sol
-npm run compile && npm run deploy:local
+npm run compile
+npm run build:frontend
 ```
 
-### 6. Start IPFS daemon
+`init:local` creates an ignored `.env` with a random wrapping secret without printing it. Preserve that secret and the runtime database securely; losing the secret loses access to stored keys. `ceremony` adds a real secret phase-two contribution and verifies the transcript. It inherits a local phase-one transcript and does not claim an independent multiparty setup. It updates the generated implementation, never the verifier wrapper.
 
-```bash
-ipfs init
-ipfs daemon
+## Run the application
+
+```powershell
+.\start-all.ps1
+# Equivalent supervisor: node scripts/localStack.js
 ```
 
-### 7. Start backend server
+The supervisor starts a fresh local Hardhat deployment, isolated local Kubo repository (API 5001, gateway 18080), API and Vite, writing logs and owned process IDs under `runtime/local-stack`. Keep the terminal open. Open http://localhost:5173 manually and select chain 31337 in the wallet. Stop with Ctrl+C or `.\stop-all.ps1`. Existing occupied service ports cause startup failure rather than reuse of an unknown stack. Each fresh chain uses a deployment-bound data namespace; old records are not migrated.
 
-```bash
-npm run server
+The API honors `PORT` in `.env` or the shell; the supervisor and frontend proxy use the same value. Windows denied binding to port 3001 on the tested machine, so its ignored local `.env` uses `PORT=13001`. A fresh deployment, API/frontend/proxy readiness and scoped shutdown were verified with that setting. The default example remains 3001; set another available port when needed.
+
+To run services manually: start `npm run node`, deploy with `npm run deploy:local`, start a Kubo daemon, then `npm run server` and `npm run frontend`. Ensure configured RPC/IPFS URLs and deployment match. Backend binds to loopback only. A standalone production frontend must set `VITE_API_URL` or provide an `/api` reverse proxy; development uses the Vite proxy.
+
+## Approve membership and authenticate
+
+The Connect wallet button requests a switch to the deployment's chain through MetaMask. Approve the prompt; if the local Hardhat network is missing, the app requests adding it with the correct RPC URL first. A saved network still needs to be selected for the site. Rejected or already-pending wallet prompts are reported explicitly. Account/network changes clear authorization and credentials, so connect before importing your credential file.
+
+1. In Access, connect the wallet and create/download a role credential file. Keep its secret private.
+2. The institution administrator reviews the participant independently, then approves the **public leaf** displayed by the browser:
+
+```powershell
+npm run admin -- enroll 0 <publicLeaf>
+# Remove an enrolled credential; all older sessions for this role become invalid:
+npm run admin -- remove 0 <publicLeaf>
+# Reconcile a pending root publication after a failed admin transaction:
+npm run admin -- reconcile 0
 ```
 
-### 8. Start frontend
+3. Click Authenticate approved role. The browser proves membership locally, submits the wallet-bound proof and signs a one-use API challenge.
+4. Register synthetic donor/recipient records, evaluate eligible pairs and run ranking batches.
+5. Authenticate a separately approved Surgeon credential to revoke either record type. Check cleanup state after deactivation.
 
-```bash
-# Install frontend deps (if separate)
-npm install --prefix src
-npm run frontend
+Role root updates invalidate existing role sessions. Local administrator tooling uses the unlocked development owner; outside local development it requires `ADMIN_PRIVATE_KEY` supplied to the administrator process only. Never put it in the service `.env`.
+
+```powershell
+npm run admin -- revoke-session <wallet>
+npm run admin -- schedule <recordId> <unixSeconds>
+npm run admin -- retry <recordId>
 ```
 
-### 9. Run tests
+There are no public self-enrollment, proof-generation, arbitrary decryption, ciphertext-download or direct-unpin APIs. New record preparation is two-phase: encrypted upload, wallet registration, API confirmation. The UI permits retry after a wallet transaction failure. Pending uploads require operator retention review if abandoned; they are not silently counted as registered records.
 
-```bash
-npm test                    # 60+ fast contract unit tests (mock ZKP verifier)
-npm run test:gas            # unit tests with gas report
-npm run test:integration    # real Groth16 proofs + SEAL BFV + full e2e chain (slower)
-npm run benchmark           # performance/gas benchmarks → benchmark_results.md
-```
+## Synthetic policy
 
-`npm run test:integration` requires the compiled circuit artefacts in
-`circuits/build/` (already present in this repo) — do **not** re-run
-`npm run ceremony` beforehand. `test/integration/ipfsService.test.js`
-additionally needs a running `ipfs daemon` and is skipped gracefully if one
-isn't reachable.
-
----
-
-### 10. Deploy to Sepolia testnet (optional)
-
-```bash
-cp .env.example .env
-# fill in SEPOLIA_RPC_URL, DEPLOYER_PRIVATE_KEY (funded with Sepolia test ETH),
-# and ETHERSCAN_API_KEY
-npm run deploy:sepolia
-# then, using the addresses printed by the script:
-npx hardhat verify --network sepolia <address> [constructor args]
-```
-
-Deployment addresses (and Etherscan links) are written to
-`deployments/sepolia.json`.
-
----
-
-## Contract Roles & Permissions
-
-| Role | ID | bit0 Score | bit1 Identity | bit2 Update | bit3 Transport | bit4 Transplant | bit5 Revoke |
-|------|-----|------------|---------------|-------------|----------------|-----------------|-------------|
-| DOCTOR | 0 | ✓ | ✓ | ✓ | ✗ | ✓ | ✗ |
-| COORDINATOR | 1 | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
-| PROCUREMENT | 2 | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ |
-| MATCHING | 3 | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ |
-| TRANSPORTER | 4 | ✗ | ✗ | ✗ | ✓ | ✗ | ✗ |
-| SURGEON | 5 | ✓ | ✓ | ✗ | ✗ | ✓ | ✓ |
-
----
-
-## API Reference
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/zkp/generate` | Generate Groth16 ZKP role proof |
-| POST | `/api/pfe/encrypt` | BFV-encrypt clinical attributes |
-| POST | `/api/pfe/score` | Homomorphic polynomial evaluation |
-| POST | `/api/pfe/decrypt` | Decrypt score with role key |
-| POST | `/api/ipfs/upload` | Upload encrypted record to IPFS |
-| DELETE | `/api/ipfs/unpin/:cid` | GDPR Art. 17 erasure |
-| GET | `/api/status` | Health check |
-
----
-
-## PFE Polynomial (Kidney Transplant Model)
+ABO eligibility precedes ranking. Rh is excluded. Six binary synthetic tissue markers are a toy representation, not clinical HLA typing. With mismatch count `m` and recipient urgency `u` in 0/1/2:
 
 ```
-f(x) = α₀ + α₁·x₁ + α₂·x₂ + α₃·x₃ + α₄·x₁x₂ + α₅·x₂x₃
-
-Where:
-  x₁ = blood type compatibility  (0 or 1)
-  x₂ = HLA antigen match score   (0.0–1.0)
-  x₃ = urgency level             (0.0–1.0)
-
-Coefficients (kidney-optimised):
-  α = [0.05, 0.40, 0.30, 0.15, 0.05, 0.05]
-
-Score range: 0–1000 (higher = better compatibility)
+N = 4200 - 700*m + 900*u     # evaluated under BFV
+S = round(N / 6)           # released for eligible pairs only
 ```
 
----
+Weights are experimental. Ineligible pairs receive no score. Scores are ranking points, not compatibility percentages, and ranking does not reserve or allocate organs.
 
-## ZKP Circuit (roleProof.circom)
+## Verification and evaluation
 
+```powershell
+npm run lint
+npm test
+npm run build:frontend
+# Actual browser + API + isolated Kubo + local blockchain:
+$env:IPFS_BINARY = '<absolute path to ipfs.exe>'  # if needed
+npm run demo
+# Same live acceptance as a test, otherwise explicitly skipped by npm test:
+$env:RUN_LIVE_E2E = '1'
+npm run test:integration
+# Compile, export ABIs, check sources, build and run the full suite with live acceptance:
+npm run verify
+# Dedicated sequential performance run; avoid other tests/dev workloads:
+npm run benchmark
 ```
-Private inputs:  credential, pathElements[20], pathIndices[20], salt
-Public inputs:   merkleRoot, roleId, nullifier, commitment
 
-Constraints:
-  1. nullifier  = Poseidon(credential, salt)       — replay protection
-  2. commitment = Poseidon(credential, roleId)     — role binding
-  3. credential ∈ Merkle tree rooted at merkleRoot — membership proof
-  4. roleId < 6                                    — valid role
-```
+`npm test` runs protocol-v2 tests; historical tests are preserved but not treated as validation of the incompatible revision. The live demo stores ignored runtime logs, synthetic credential fixtures and a completion screenshot. Published evidence excludes keys and credentials. Browser tests use an EIP-1193 adapter, not the MetaMask extension interface.
 
----
+Benchmarks retain 10 warmups and 30 measured repetitions, raw samples, median/p95, machine details, source hashes and artifact metadata. Authenticated HTTP workloads compare plaintext wallet RBAC, BFV wallet RBAC and BFV ZKP authorization for 1x1, 5x5 and 10x10 matrices. Benchmark-only quotas are raised in its isolated harness; production defaults stay enforced. The plaintext baseline holds synthetic input in memory, while BFV retrieves encrypted records from real Kubo, so differences include storage/protection costs. Node proof timing is not browser latency. Results and evidence live in `paper/evaluation-v2/`; old root-level benchmark files are historical.
 
-## GDPR Compliance
+## Research documents
 
-| Article | Mechanism | Implementation |
-|---------|-----------|----------------|
-| Art. 5(1)(f) | Integrity & confidentiality | BFV encryption + AES-256-GCM |
-| Art. 17 | Right to erasure | LifecycleManager → IPFS unpin |
-| Art. 25 | Data protection by design | No PII on-chain; pseudonymous addresses |
-| Art. 4(5) | Pseudonymisation | ZKP proofs: identity never on-chain |
+- [Protocol and threat model](docs/PROTOCOL_V2.md)
+- [Updated Phase II report PDF in the supplied two-column layout](paper/phase2-report-2026-10-23/organ_donation_report_updated.pdf)
+- [Editable report source](paper/phase2-report-2026-10-23/organ_donation_report_updated.tex) and [self-contained report ZIP](paper/phase2-report-2026-10-23.zip)
+- [Report build instructions and evidence notes](paper/phase2-report-2026-10-23/README.md)
+- [Earlier single-column article](paper/report-v2.tex)
+- [Revised presentation source](paper/slides-v2.tex)
+- [Verified bibliography and unresolved candidates](paper/bibliography-verification.md)
+- [Paper claim-to-evidence map](paper/claim-evidence-v2.md)
+- [Completed benchmark tables](paper/evaluation-v2/benchmark-v2.md) and [raw samples](paper/evaluation-v2/benchmark-v2.json)
+- [Standalone workload figure](paper/evaluation-v2/workload-latency.pdf)
+- [Frozen source/evidence hashes](paper/evaluation-v2/revision-manifest.json)
+- [Implementation status and remaining limits](IMPLEMENTATION_V2.md)
 
----
+From the `paper` directory, use `pdflatex report-v2`, `bibtex report-v2`, then run `pdflatex report-v2` twice; build `slides-v2.tex` with pdflatex. A LaTeX installation is required. Results are included from generated TeX snippets when available. Original Downloads files remain intact.
 
-## Security Model
+After a complete benchmark, `npm run results:render` regenerates the manuscript tables and standalone latency figure. The renderer uses Matplotlib when installed, otherwise ReportLab for PDF/SVG; the tested plotting dependency is recorded in `paper/evaluation-v2/plotting-requirements.txt`. Install it in a separate Python environment when reproducing the figure. Incomplete `.partial.json` output is never used as final results.
 
-**Prototype trust assumption — server-side ZKP generation.** In a fully
-decentralised deployment, credential derivation and Merkle-tree/witness
-computation for the ZKP would run entirely client-side (browser WASM), so the
-role credential never leaves the user's device. In this prototype, that
-computation runs on the Express backend (`server/zkpService.js`) for
-practical reasons (browser WASM chunking / circomlibjs memory overhead at
-the current 20-level tree depth):
+## Operational limits
 
-- The credential is transmitted to the server over HTTPS/TLS.
-- It is held **only in memory**, used once to build the Merkle path and
-  generate the proof, and is never persisted, logged, or returned in any
-  response (`zkpService.js` also zeroes the private-input references it
-  holds after use, as a defence-in-depth measure).
-- The cryptographic soundness and zero-knowledge property of the Groth16
-  proof itself are unaffected — the trust assumption is scoped purely to
-  *who computes the witness*, not to what the proof reveals on-chain.
-- Production hardening path: move `deriveCredential()` and Merkle-tree
-  construction into the browser (e.g. via `@zk-kit/incremental-merkle-tree`
-  + `poseidon-lite`, both pure-JS/browser-safe) and call
-  `snarkjs.groth16.fullProve()` client-side against a browser-served
-  `roleProof.wasm` + streamed `.zkey`, so the server only ever sees
-  `{ merkleRoot, roleId }` and a public transaction, never the credential.
-
-This is a deployment-engineering limitation of the current prototype, not a
-cryptographic weakness of the ZKP scheme — see "Known Limitations" below.
-
----
-
-## Security Constraints
-
-- ✗ **NEVER** log credentials, PFE master keys, or role keys
-- ✗ **NEVER** store plaintext patient data on IPFS or on-chain
-- ✗ **NEVER** pass private ZKP inputs to a contract
-- ✓ Gas cost for `ZKPVerifier.verifyProof` < **500,000** (typical: ~220,000)
-- ✓ All role keys expire after **4 hours**
-- ✓ IPFS unpin triggered automatically on `RevocationExecuted` event
-- ✓ Nullifier replay protection in `PFEKeyIssuer`
-- ✓ Rate limiting on all `/api/` endpoints (100 req / 15 min)
-
----
-
-## Known Limitations & Future Work
-
-- **Server-side credential handling** — see [Security Model](#security-model)
-  above; the fix path (client-side witness generation) is scoped there.
-- **Single-institution deployment** — `RoleRegistry` roots and `PFEKeyIssuer`
-  keys are managed by one deployer/admin key. Multi-hospital federation
-  (per-institution role registries, cross-institution key trust) is future
-  work.
-- **3-variable compatibility polynomial** — the current PFE model scores on
-  blood type, HLA match, and urgency only. A clinically fuller model would
-  add cold-ischemia time and geographic proximity (5 variables, with
-  cross-terms), at the cost of additional SEAL BFV multiplications
-  (relinearization + noise budget) per score.
-- **Classical signatures** — role transactions are authorised via standard
-  ECDSA (secp256k1), which is not post-quantum secure. A future iteration
-  could migrate to a post-quantum scheme (e.g. CRYSTALS-Dilithium) once
-  EVM-side verification becomes practical.
-
----
-
-## Research Contribution
-
-The novel contribution is the **three-way integration**, not any single
-primitive in isolation: Groth16 ZKP role-authentication is used as an
-on-chain **gate** for issuing scoped Polynomial Functional Encryption keys
-(`PFEKeyIssuer`), which in turn authorise homomorphic (SEAL BFV) compatibility
-scoring over IPFS-backed, pseudonymous donor/recipient records, with GDPR
-Article 17 erasure wired directly into the on-chain revocation lifecycle
-(`LifecycleManager` → IPFS unpin listener). Prior work (see comparison table
-above) addresses at most two of these three concerns at once, and none gate
-functional-encryption key issuance behind a zero-knowledge role proof.
-
----
-
-## Gas Estimates
-
-| Function | Estimated Gas |
-|----------|---------------|
-| `ZKPVerifier.verifyProof` | ~220,000 |
-| `PFEKeyIssuer.verifyAndIssueKey` | ~280,000 |
-| `OrganRegistry.registerDonor` | ~85,000 |
-| `LifecycleManager.executeRevocation` | ~60,000 |
-
----
-
-## License
-
-MIT — see [LICENSE](LICENSE)
+The API sees submitted attributes and owns the BFV secret. Metadata and approved scores can leak information. Local key removal/unpin/GC does not erase backups, remote replicas, copied keys or past outputs. Deep confirmed-chain changes halt cleanup for operator audit. Keys are prototype custody in SQLite, not an HSM. This local single-process system is not ready for patient data or public deployment. See the protocol for quotas, state transitions and exclusions.

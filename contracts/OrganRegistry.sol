@@ -1,257 +1,30 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
-
+import "@openzeppelin/contracts/access/Ownable.sol";
 import "./PFEKeyIssuer.sol";
-
-/**
- * @title OrganRegistry
- * @notice Stores encrypted donor and recipient records as keccak256(IPFS CID)
- *         commitments. Plain CIDs and patient data are NEVER stored on-chain.
- *
- * Access Control:
- *   - All write operations require a valid PFE key (verified via PFEKeyIssuer)
- *   - deactivateDonor / deactivateRecipient are restricted to LifecycleManager
- *
- * GDPR Design:
- *   - No PII is stored on-chain; only pseudonymous commitments
- *   - Records are deactivated (not deleted) to maintain audit trail
- *   - Actual data revocation is achieved via IPFS unpinning (off-chain)
- */
-contract OrganRegistry {
-
-    // ── Dependency ────────────────────────────────────────────────────────
-    PFEKeyIssuer public immutable pfeKeyIssuer;
-
-    // ── Authorised LifecycleManager (set post-deploy) ─────────────────────
+contract OrganRegistry is Ownable {
+    struct Record { bytes32 anchor; uint8 entityType; bool active; address registeredBy; uint256 timestamp; }
+    mapping(bytes32 => Record) public records;
     address public lifecycleManager;
-    address public owner;
-
-    // ── Data structures ───────────────────────────────────────────────────
-    struct DonorRecord {
-        string  encCID;          // IPFS CIDv1 string (e.g. Qm... or bafy...)
-        uint8   bloodType;       // 0=A+, 1=A-, 2=B+, 3=B-, 4=AB+, 5=AB-, 6=O+, 7=O-
-        bytes32 hlaRoot;         // Merkle root of HLA antigen set (off-chain)
-        address registeredBy;    // Pseudonymous address of registering party
-        bool    active;
-        uint256 ts;              // Registration timestamp
+    PFEKeyIssuer public immutable issuer;
+    event RecordRegistered(bytes32 indexed id, bytes32 anchor, uint8 entityType, address registeredBy);
+    event RecordDeactivated(bytes32 indexed id);
+    constructor(address sessionIssuer) Ownable(msg.sender) { issuer = PFEKeyIssuer(sessionIssuer); }
+    function setLifecycleManager(address manager) external onlyOwner {
+        require(manager != address(0) && lifecycleManager == address(0), "Manager already set");
+        lifecycleManager = manager;
     }
-
-    struct RecipientRecord {
-        string  encCID;
-        uint8   bloodType;
-        bytes32 hlaRoot;
-        address registeredBy;
-        bool    active;
-        uint256 ts;
-        uint8   urgency;         // 0=standard, 1=urgent, 2=emergency
+    function registerRecord(bytes32 id, bytes32 anchor, uint8 entityType) external {
+        require(entityType < 2 && id != bytes32(0) && anchor != bytes32(0), "Invalid record");
+        require(records[id].timestamp == 0, "Record exists");
+        require(issuer.hasPermission(msg.sender, entityType == 0 ? 1 : 2), "Registration forbidden");
+        records[id] = Record(anchor, entityType, true, msg.sender, block.timestamp);
+        emit RecordRegistered(id, anchor, entityType, msg.sender);
     }
-
-    // ── Storage ───────────────────────────────────────────────────────────
-    mapping(uint256 => DonorRecord)     public donors;
-    mapping(uint256 => RecipientRecord) public recipients;
-    uint256 public donorCount;
-    uint256 public recipientCount;
-
-    // ── Events ────────────────────────────────────────────────────────────
-    event DonorRegistered(
-        uint256 indexed id,
-        string          encCID,
-        address         registeredBy
-    );
-    event RecipientRegistered(
-        uint256 indexed id,
-        string          encCID,
-        address         registeredBy
-    );
-    event DonorDeactivated(uint256 indexed id, address deactivatedBy);
-    event RecipientDeactivated(uint256 indexed id, address deactivatedBy);
-    event LifecycleManagerSet(address indexed mgr);
-
-    // ── Custom errors ─────────────────────────────────────────────────────
-    error NotAuthorised();
-    error InvalidKey();
-    error DonorNotFound(uint256 id);
-    error RecipientNotFound(uint256 id);
-    error AlreadyInactive(uint256 id);
-    error ZeroEncCID();
-    error NoViewPermission();
-
-    // ── Modifiers ─────────────────────────────────────────────────────────
-
-    modifier onlyOwner() {
-        if (msg.sender != owner) revert NotAuthorised();
-        _;
+    function deactivate(bytes32 id) external {
+        require(msg.sender == lifecycleManager, "Lifecycle only");
+        require(records[id].active, "Record inactive or missing");
+        records[id].active = false; emit RecordDeactivated(id);
     }
-
-    modifier onlyValidKey() {
-        (bool valid, , ) = pfeKeyIssuer.isKeyValid(msg.sender);
-        if (!valid) revert InvalidKey();
-        _;
-    }
-
-    modifier onlyLifecycleManager() {
-        if (msg.sender != lifecycleManager) revert NotAuthorised();
-        _;
-    }
-
-    // ── Constructor ───────────────────────────────────────────────────────
-    constructor(address _pfeKeyIssuer) {
-        require(_pfeKeyIssuer != address(0), "OrganRegistry: zero address");
-        pfeKeyIssuer = PFEKeyIssuer(_pfeKeyIssuer);
-        owner = msg.sender;
-    }
-
-    // ── Admin: Set LifecycleManager ───────────────────────────────────────
-
-    /**
-     * @notice Links the LifecycleManager contract (called once after deployment).
-     */
-    function setLifecycleManager(address _mgr) external onlyOwner {
-        require(_mgr != address(0), "OrganRegistry: zero mgr address");
-        lifecycleManager = _mgr;
-        emit LifecycleManagerSet(_mgr);
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Donor operations
-    // ─────────────────────────────────────────────────────────────────────────
-
-    /**
-     * @notice Register a new donor record with encrypted IPFS CID string.
-     * @param encCID    ipfs_cid_string — binds record to IPFS content.
-     * @param bloodType Blood type code (0–7).
-     * @param hlaRoot   Merkle root of HLA antigen matches (computed off-chain).
-     * @return id       Assigned donor ID.
-     */
-    function registerDonor(
-        string calldata encCID,
-        uint8   bloodType,
-        bytes32 hlaRoot
-    ) external onlyValidKey returns (uint256 id) {
-        if (bytes(encCID).length == 0) revert ZeroEncCID();
-        id = donorCount++;
-        donors[id] = DonorRecord({
-            encCID:       encCID,
-            bloodType:    bloodType,
-            hlaRoot:      hlaRoot,
-            registeredBy: msg.sender,
-            active:       true,
-            ts:           block.timestamp
-        });
-        emit DonorRegistered(id, encCID, msg.sender);
-    }
-
-    /**
-     * @notice Deactivate a donor record (called by LifecycleManager on revocation).
-     */
-    function deactivateDonor(uint256 donorId)
-        external
-        onlyLifecycleManager
-    {
-        if (donors[donorId].ts == 0) revert DonorNotFound(donorId);
-        if (!donors[donorId].active) revert AlreadyInactive(donorId);
-        donors[donorId].active = false;
-        emit DonorDeactivated(donorId, msg.sender);
-    }
-
-    /**
-     * @notice Returns the encrypted CID string for a donor.
-     */
-    function getEncryptedCID(uint256 donorId)
-        external
-        view
-        returns (string memory)
-    {
-        if (donors[donorId].ts == 0) revert DonorNotFound(donorId);
-        return donors[donorId].encCID;
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Recipient operations
-    // ─────────────────────────────────────────────────────────────────────────
-
-    /**
-     * @notice Register a new recipient record.
-     * @param encCID    ipfs_cid_string.
-     * @param bloodType Blood type code (0–7).
-     * @param hlaRoot   HLA Merkle root.
-     * @param urgency   0=standard, 1=urgent, 2=emergency.
-     * @return id       Assigned recipient ID.
-     */
-    function registerRecipient(
-        string calldata encCID,
-        uint8   bloodType,
-        bytes32 hlaRoot,
-        uint8   urgency
-    ) external onlyValidKey returns (uint256 id) {
-        if (bytes(encCID).length == 0) revert ZeroEncCID();
-        require(urgency <= 2, "OrganRegistry: invalid urgency");
-        id = recipientCount++;
-        recipients[id] = RecipientRecord({
-            encCID:       encCID,
-            bloodType:    bloodType,
-            hlaRoot:      hlaRoot,
-            registeredBy: msg.sender,
-            active:       true,
-            ts:           block.timestamp,
-            urgency:      urgency
-        });
-        emit RecipientRegistered(id, encCID, msg.sender);
-    }
-
-    /**
-     * @notice Deactivate a recipient record.
-     */
-    function deactivateRecipient(uint256 recipientId)
-        external
-        onlyLifecycleManager
-    {
-        if (recipients[recipientId].ts == 0) revert RecipientNotFound(recipientId);
-        if (!recipients[recipientId].active) revert AlreadyInactive(recipientId);
-        recipients[recipientId].active = false;
-        emit RecipientDeactivated(recipientId, msg.sender);
-    }
-
-    /**
-     * @notice Returns the recipient encrypted CID.
-     */
-    function getRecipientEncryptedCID(uint256 recipientId)
-        external
-        view
-        returns (string memory)
-    {
-        if (recipients[recipientId].ts == 0) revert RecipientNotFound(recipientId);
-        return recipients[recipientId].encCID;
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Matching operations
-    // ─────────────────────────────────────────────────────────────────────────
-
-    /**
-     * @notice Retrieves combined encoded records for off-chain PFE evaluation.
-     *         Caller must hold a valid key with viewScore (bit0) permission.
-     */
-    function getCompatibilityScore(uint256 donorId, uint256 recipientId)
-        external
-        view
-        onlyValidKey
-        returns (bytes memory encryptedScore)
-    {
-        bool hasViewScore = pfeKeyIssuer.hasPermission(msg.sender, 0); // bit0
-        if (!hasViewScore) revert NoViewPermission();
-
-        if (donors[donorId].ts == 0 || !donors[donorId].active) revert DonorNotFound(donorId);
-        if (recipients[recipientId].ts == 0 || !recipients[recipientId].active) revert RecipientNotFound(recipientId);
-
-        return abi.encode(
-            donors[donorId].encCID,
-            recipients[recipientId].encCID,
-            donors[donorId].bloodType,
-            recipients[recipientId].bloodType,
-            donors[donorId].hlaRoot,
-            recipients[recipientId].hlaRoot,
-            recipients[recipientId].urgency
-        );
-    }
+    function isActive(bytes32 id) external view returns (bool) { return records[id].active; }
 }

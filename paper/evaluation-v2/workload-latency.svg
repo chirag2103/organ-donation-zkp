@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE svg
+  PUBLIC '-//W3C//DTD SVG 1.0//EN'
+  'http://www.w3.org/TR/2001/REC-SVG-20010904/DTD/svg10.dtd'>
+<svg width="640" height="400" preserveAspectRatio="xMinYMin meet" viewBox="0 0 640 400" xmlns="http://www.w3.org/2000/svg" version="1.0" fill-rule="evenodd" xmlns:xlink="http://www.w3.org/1999/xlink">
+	<title>...</title>
+	<desc>...</desc>
+	<clipPath id="clip">
+		<rect x="0" y="0" width="640" height="400"/>
+	</clipPath>
+	<g id="group" transform="scale(1,-1) translate(0,-400)" style="clip-path: url(#clip)">
+		<g transform="">
+			<g transform="">
+				<g transform="">
+					<g transform="">
+						<path d="M 70,65 L 600,65 Z" style="stroke: rgb(0%,0%,0%); stroke-linecap: butt; stroke-width: 1;"/>
+					</g>
+					<g transform="">
+						<path d="M 70,65 L 70,60 Z" style="stroke: rgb(0%,0%,0%); stroke-linecap: butt; stroke-width: 1;"/>
+						<path d="M 440.454102,65 L 440.454102,60 Z" style="stroke: rgb(0%,0%,0%); stroke-linecap: butt; stroke-width: 1;"/>
+						<path d="M 600,65 L 600,60 Z" style="stroke: rgb(0%,0%,0%); stroke-linecap: butt; stroke-width: 1;"/>
+					</g>
+					<g transform="">
+						<g transform=" matrix(1,0,0,1,70,60)">
+							<text x="-14.58" y="-10.0" style="font-family: Times-Roman; font-size: 10px;fill: rgb(0%,0%,0%); stroke:none;" transform="translate(0,-20) scale(1,-1)">1 (1x1)</text>
+						</g>
+						<g transform=" matrix(1,0,0,1,440.454102,60)">
+							<text x="-17.08" y="-10.0" style="font-family: Times-Roman; font-size: 10px;fill: rgb(0%,0%,0%); stroke:none;" transform="translate(0,-20) scale(1,-1)">25 (5x5)</text>
+						</g>
+						<g transform=" matrix(1,0,0,1,600,60)">
+							<text x="-24.580000000000002" y="-10.0" style="font-family: Times-Roman; font-size: 10px;fill: rgb(0%,0%,0%); stroke:none;" transform="translate(0,-20) scale(1,-1)">100 (10x10)</text>
+						</g>
+					</g>
+				</g>
+				<g transform="">
+					<g transform="">
+						<path d="M 70,65 L 70,300 Z" style="stroke: rgb(0%,0%,0%); stroke-linecap: butt; stroke-width: 1;"/>
+					</g>
+					<g transform="">
+						<path d="M 70,65 L 65,65 Z" style="stroke: rgb(0%,0%,0%); stroke-linecap: butt; stroke-width: 1;"/>
+						<path d="M 70,143.333333 L 65,143.333333 Z" style="stroke: rgb(0%,0%,0%); stroke-linecap: butt; stroke-width: 1;"/>
+						<path d="M 70,221.666667 L 65,221.666667 Z" style="stroke: rgb(0%,0%,0%); stroke-linecap: butt; stroke-width: 1;"/>
+						<path d="M 70,300 L 65,300 Z" style="stroke: rgb(0%,0%,0%); stroke-linecap: butt; stroke-width: 1;"/>
+					</g>
+					<g transform="">
+						<g transform=" matrix(1,0,0,1,65,65)">
+							<text x="-15.0" y="-4.0" style="font-family: Times-Roman; font-size: 10px;fill: rgb(0%,0%,0%); stroke:none;" transform="translate(0,-8) scale(1,-1)">100</text>
+						</g>
+						<g transform=" matrix(1,0,0,1,65,143.333333)">
+							<text x="-20.0" y="-4.0" style="font-family: Times-Roman; font-size: 10px;fill: rgb(0%,0%,0%); stroke:none;" transform="translate(0,-8) scale(1,-1)">1000</text>
+						</g>
+						<g transform=" matrix(1,0,0,1,65,221.666667)">
+							<text x="-25.0" y="-4.0" style="font-family: Times-Roman; font-size: 10px;fill: rgb(0%,0%,0%); stroke:none;" transform="translate(0,-8) scale(1,-1)">10000</text>
+						</g>
+						<g transform=" matrix(1,0,0,1,65,300)">
+							<text x="-30.0" y="-4.0" style="font-family: Times-Roman; font-size: 10px;fill: rgb(0%,0%,0%); stroke:none;" transform="translate(0,-8) scale(1,-1)">100000</text>
+						</g>
+					</g>
+				</g>
+				<path d="M 70,143.333333 L 600,143.333333 Z" style="stroke: rgb(86%,86%,86%); stroke-linecap: butt; stroke-width: 0.25;"/>
+				<path d="M 70,221.666667 L 600,221.666667 Z" style="stroke: rgb(86%,86%,86%); stroke-linecap: butt; stroke-width: 0.25;"/>
+				<path d="M 70,300 L 600,300 Z" style="stroke: rgb(86%,86%,86%); stroke-linecap: butt; stroke-width: 0.25;"/>
+				<g transform="">
+					<polyline points="70 75.17847, 440.4541 101.4439, 600 138.2937" style="stroke: rgb(9%,39%,67%); stroke-linecap: round; stroke-width: 1.6; fill: None; fill-rule: evenodd;"/>
+					<circle cx="70.0" cy="75.1784686452151" r="2.5" style="stroke: rgb(9%,39%,67%); stroke-linecap: butt; stroke-width: 0.1; fill: rgb(9%,39%,67%); fill-rule: evenodd;"/>
+					<circle cx="440.45410229809" cy="101.44387354742726" r="2.5" style="stroke: rgb(9%,39%,67%); stroke-linecap: butt; stroke-width: 0.1; fill: rgb(9%,39%,67%); fill-rule: evenodd;"/>
+					<circle cx="600.0" cy="138.2937373401337" r="2.5" style="stroke: rgb(9%,39%,67%); stroke-linecap: butt; stroke-width: 0.1; fill: rgb(9%,39%,67%); fill-rule: evenodd;"/>
+					<polyline points="70 110.833, 440.4541 210.5053, 600 227.7184" style="stroke: rgb(76%,30%,9%); stroke-linecap: round; stroke-width: 1.6; fill: None; fill-rule: evenodd;"/>
+					<circle cx="70.0" cy="110.83296176287828" r="2.5" style="stroke: rgb(76%,30%,9%); stroke-linecap: butt; stroke-width: 0.1; fill: rgb(76%,30%,9%); fill-rule: evenodd;"/>
+					<circle cx="440.45410229809" cy="210.5053317871324" r="2.5" style="stroke: rgb(76%,30%,9%); stroke-linecap: butt; stroke-width: 0.1; fill: rgb(76%,30%,9%); fill-rule: evenodd;"/>
+					<circle cx="600.0" cy="227.71836809200875" r="2.5" style="stroke: rgb(76%,30%,9%); stroke-linecap: butt; stroke-width: 0.1; fill: rgb(76%,30%,9%); fill-rule: evenodd;"/>
+					<polyline points="70 81.92803, 440.4541 183.8682, 600 228.1988" style="stroke: rgb(15%,50%,28%); stroke-linecap: round; stroke-width: 1.6; fill: None; fill-rule: evenodd;"/>
+					<circle cx="70.0" cy="81.92803195146256" r="2.5" style="stroke: rgb(15%,50%,28%); stroke-linecap: butt; stroke-width: 0.1; fill: rgb(15%,50%,28%); fill-rule: evenodd;"/>
+					<circle cx="440.45410229809" cy="183.8682465139072" r="2.5" style="stroke: rgb(15%,50%,28%); stroke-linecap: butt; stroke-width: 0.1; fill: rgb(15%,50%,28%); fill-rule: evenodd;"/>
+					<circle cx="600.0" cy="228.19882889727458" r="2.5" style="stroke: rgb(15%,50%,28%); stroke-linecap: butt; stroke-width: 0.1; fill: rgb(15%,50%,28%); fill-rule: evenodd;"/>
+					<polygon points="69 75.03858, 69 77.03858, 67 77.03858, 67 79.03858, 69 79.03858, 69 81.03858, 71 81.03858, 71 79.03858, 73 79.03858, 73 77.03858, 71 77.03858, 71 75.03858" style="stroke: rgb(9%,39%,67%); stroke-linecap: butt; stroke-width: 1; fill: none; fill-rule: evenodd;"/>
+					<polygon points="439.4541 103.302, 439.4541 105.302, 437.4541 105.302, 437.4541 107.302, 439.4541 107.302, 439.4541 109.302, 441.4541 109.302, 441.4541 107.302, 443.4541 107.302, 443.4541 105.302, 441.4541 105.302, 441.4541 103.302" style="stroke: rgb(9%,39%,67%); stroke-linecap: butt; stroke-width: 1; fill: none; fill-rule: evenodd;"/>
+					<polygon points="599 142.962, 599 144.962, 597 144.962, 597 146.962, 599 146.962, 599 148.962, 601 148.962, 601 146.962, 603 146.962, 603 144.962, 601 144.962, 601 142.962" style="stroke: rgb(9%,39%,67%); stroke-linecap: butt; stroke-width: 1; fill: none; fill-rule: evenodd;"/>
+					<polygon points="69 122.9209, 69 124.9209, 67 124.9209, 67 126.9209, 69 126.9209, 69 128.9209, 71 128.9209, 71 126.9209, 73 126.9209, 73 124.9209, 71 124.9209, 71 122.9209" style="stroke: rgb(76%,30%,9%); stroke-linecap: butt; stroke-width: 1; fill: none; fill-rule: evenodd;"/>
+					<polygon points="439.4541 208.8202, 439.4541 210.8202, 437.4541 210.8202, 437.4541 212.8202, 439.4541 212.8202, 439.4541 214.8202, 441.4541 214.8202, 441.4541 212.8202, 443.4541 212.8202, 443.4541 210.8202, 441.4541 210.8202, 441.4541 208.8202" style="stroke: rgb(76%,30%,9%); stroke-linecap: butt; stroke-width: 1; fill: none; fill-rule: evenodd;"/>
+					<polygon points="599 237.2923, 599 239.2923, 597 239.2923, 597 241.2923, 599 241.2923, 599 243.2923, 601 243.2923, 601 241.2923, 603 241.2923, 603 239.2923, 601 239.2923, 601 237.2923" style="stroke: rgb(76%,30%,9%); stroke-linecap: butt; stroke-width: 1; fill: none; fill-rule: evenodd;"/>
+					<polygon points="69 85.39236, 69 87.39236, 67 87.39236, 67 89.39236, 69 89.39236, 69 91.39236, 71 91.39236, 71 89.39236, 73 89.39236, 73 87.39236, 71 87.39236, 71 85.39236" style="stroke: rgb(15%,50%,28%); stroke-linecap: butt; stroke-width: 1; fill: none; fill-rule: evenodd;"/>
+					<polygon points="439.4541 182.1962, 439.4541 184.1962, 437.4541 184.1962, 437.4541 186.1962, 439.4541 186.1962, 439.4541 188.1962, 441.4541 188.1962, 441.4541 186.1962, 443.4541 186.1962, 443.4541 184.1962, 441.4541 184.1962, 441.4541 182.1962" style="stroke: rgb(15%,50%,28%); stroke-linecap: butt; stroke-width: 1; fill: none; fill-rule: evenodd;"/>
+					<polygon points="599 226.0018, 599 228.0018, 597 228.0018, 597 230.0018, 599 230.0018, 599 232.0018, 601 232.0018, 601 230.0018, 603 230.0018, 603 228.0018, 601 228.0018, 601 226.0018" style="stroke: rgb(15%,50%,28%); stroke-linecap: butt; stroke-width: 1; fill: none; fill-rule: evenodd;"/>
+				</g>
+			</g>
+			<text x="214.1375" y="380" style="font-family: Helvetica-Bold; font-size: 15px;fill: rgb(0%,0%,0%); stroke:none;" transform="translate(0,760) scale(1,-1)">Synthetic local matching jobs</text>
+			<text x="201.69" y="360" style="font-family: Times-Roman; font-size: 10px;fill: rgb(0%,0%,0%); stroke:none;" transform="translate(0,720) scale(1,-1)">Median: connected circles; p95: crosses. Logarithmic axes.</text>
+			<text x="246.3715" y="24" style="font-family: Times-Roman; font-size: 11px;fill: rgb(0%,0%,0%); stroke:none;" transform="translate(0,48) scale(1,-1)">Pairs per authenticated HTTP job</text>
+			<text x="12" y="190" style="font-family: Times-Roman; font-size: 10px;fill: rgb(0%,0%,0%); stroke:none;" transform="translate(0,380) scale(1,-1)">Latency (ms)</text>
+			<g transform="">
+				<rect x="181.49900000000002" y="336" width="10.0" height="10" style="stroke: rgb(0%,0%,0%); stroke-linecap: butt; stroke-width: 1; fill: rgb(9%,39%,67%); fill-rule: evenodd;"/>
+				<text x="85" y="337.9265" style="font-family: Times-Roman; font-size: 9px;fill: rgb(0%,0%,0%); stroke:none;" transform="translate(0,675) scale(1,-1)">Plaintext wallet RBAC</text>
+				<rect x="181.49900000000002" y="323" width="10.0" height="10" style="stroke: rgb(0%,0%,0%); stroke-linecap: butt; stroke-width: 1; fill: rgb(76%,30%,9%); fill-rule: evenodd;"/>
+				<text x="85" y="324.9265" style="font-family: Times-Roman; font-size: 9px;fill: rgb(0%,0%,0%); stroke:none;" transform="translate(0,649) scale(1,-1)">BFV wallet RBAC</text>
+				<rect x="181.49900000000002" y="310" width="10.0" height="10" style="stroke: rgb(0%,0%,0%); stroke-linecap: butt; stroke-width: 1; fill: rgb(15%,50%,28%); fill-rule: evenodd;"/>
+				<text x="85" y="311.9265" style="font-family: Times-Roman; font-size: 9px;fill: rgb(0%,0%,0%); stroke:none;" transform="translate(0,623) scale(1,-1)">BFV ZKP authorization</text>
+			</g>
+		</g>
+	</g>
+</svg>

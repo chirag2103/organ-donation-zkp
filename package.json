@@ -1,41 +1,45 @@
 {
   "name": "organ-donation-zkp",
   "version": "1.0.0",
-  "description": "ZKP-Authenticated PFE-Gated Organ Donation System on Blockchain",
+  "description": "ZKP-authorized BFV matching and auditable local record revocation (synthetic research prototype)",
   "private": true,
   "type": "commonjs",
   "scripts": {
-    "compile": "hardhat compile",
+    "compile": "hardhat compile && node scripts/exportAbis.js",
     "test": "hardhat test",
-    "test:gas": "REPORT_GAS=true hardhat test",
+    "test:gas": "node scripts/testGas.js",
     "coverage": "hardhat coverage",
     "node": "hardhat node",
     "deploy:local": "hardhat run scripts/deploy.js --network localhost",
     "deploy:ganache": "hardhat run scripts/deploy.js --network ganache",
-    "ceremony": "node scripts/setupCeremony.js",
+    "ceremony": "node scripts/prepareCircuit.js",
     "proof": "node scripts/generateProof.js",
     "server": "node server/index.js",
     "server:dev": "nodemon server/index.js",
-    "dev": "concurrently \"npm run node\" \"npm run server:dev\" \"npm run frontend\"",
-    "frontend": "vite",
-    "build:frontend": "vite build",
-    "lint": "eslint contracts/**/*.sol server/**/*.js --ext .js,.sol",
-    "clean": "hardhat clean && rimraf circuits/build/*.zkey circuits/build/*.r1cs deployments/*.json",
-    "test:integration": "hardhat test test/*.integration.test.js test/integration/*.test.js",
+    "dev": "node scripts/localStack.js",
+    "frontend": "vite --config vite.config.mjs",
+    "build:frontend": "vite build --config vite.config.mjs",
+    "lint": "node scripts/checkSource.js",
+    "clean": "hardhat clean",
+    "test:integration": "hardhat test test/v2/integration.test.js",
     "benchmark": "hardhat run scripts/benchmark.js",
-    "deploy:sepolia": "hardhat run scripts/deploy.js --network sepolia"
+    "deploy:sepolia": "hardhat run scripts/deploy.js --network sepolia",
+    "circuit:compile": ".\\circom.exe circuits/roleProof.circom --r1cs --wasm --sym -o circuits/build -l node_modules",
+    "admin": "node scripts/admin.js",
+    "demo": "node scripts/demo.js",
+    "init:local": "node scripts/initLocal.js",
+    "verify": "node scripts/verifyV2.js",
+    "results:render": "python scripts/renderEvaluation.py"
   },
   "dependencies": {
     "@openzeppelin/contracts": "^5.0.2",
-    "circomlib": "^2.0.5",
-    "circomlibjs": "^0.1.7",
     "cors": "^2.8.5",
     "ethers": "^6.13.5",
-    "express": "^4.21.2",
+    "express": "^4.22.3",
     "express-rate-limit": "^7.5.0",
     "helmet": "^8.0.0",
-    "ipfs-http-client": "^60.0.1",
     "node-seal": "^5.1.5",
+    "proxy-addr": "^2.0.8",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "snarkjs": "^0.7.5"
@@ -43,6 +47,7 @@
   "devDependencies": {
     "@nomicfoundation/hardhat-network-helpers": "^1.0.12",
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@playwright/test": "^1.64.1",
     "@vitejs/plugin-react": "^6.1.0",
     "chai": "^4.5.0",
     "concurrently": "^9.1.2",
@@ -51,10 +56,15 @@
     "hardhat-gas-reporter": "^1.0.10",
     "nodemon": "^3.1.9",
     "rimraf": "^6.0.1",
-    "vite": "^8.2.2"
+    "vite": "^8.2.2",
+    "circomlibjs": "^0.1.7",
+    "circomlib": "^2.0.5"
   },
   "engines": {
-    "node": ">=20.0.0",
-    "npm": ">=9.0.0"
+    "node": ">=22.19.0 <23",
+    "npm": ">=10"
+  },
+  "overrides": {
+    "underscore": "^1.13.8"
   }
 }

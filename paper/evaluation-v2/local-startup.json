@@ -1,0 +1,14 @@
+{
+  "date": "2026-10-22T13:53:19.538Z",
+  "passed": true,
+  "apiPort": 13001,
+  "frontendPort": 5173,
+  "ipfsApiPort": 5001,
+  "ipfsGatewayPort": 18080,
+  "checks": [
+    "fresh local deployment and service readiness",
+    "API status reachable",
+    "frontend served",
+    "frontend API proxy targets configured API port"
+  ]
+}

@@ -1,0 +1,21 @@
+\begin{table}[t]
+\centering\scriptsize
+\caption{Stage timing in milliseconds: 10 warmups and 30 measured samples per row. SD is population standard deviation.}
+\label{tab:timings}
+\setlength{\tabcolsep}{3pt}\renewcommand{\arraystretch}{1.1}
+\begin{tabularx}{\columnwidth}{>{\raggedright\arraybackslash}Xrrr}
+\toprule Stage & Median & p95 & SD\\\midrule
+Approved-root enrollment & 38.58 & 45.93 & 4.69\\
+Membership witness & 47.82 & 50.29 & 1.01\\
+Node proof generation & 2,922.25 & 4,318.04 & 1,168.12\\
+Local authorization receipt & 10.45 & 11.76 & 0.86\\
+BFV record encryption & 115.16 & 131.60 & 8.89\\
+BFV policy evaluation & 230.73 & 244.98 & 7.60\\
+Permitted-result release & 10.47 & 16.85 & 2.76\\
+Wallet-signature check & 10.25 & 13.00 & 1.37\\
+Encrypted storage retrieval & 42.03 & 107.35 & 20.37\\
+Local revocation request & 1.87 & 2.41 & 4.94\\
+Local deactivation receipt & 1.66 & 2.07 & 0.23\\
+Direct local cleanup & 22.62 & 31.28 & 5.13\\
+\bottomrule\end{tabularx}
+\end{table}

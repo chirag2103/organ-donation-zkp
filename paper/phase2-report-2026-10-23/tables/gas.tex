@@ -1,0 +1,17 @@
+\begin{table}[t]
+\centering\scriptsize
+\caption{Gas used: medians for repeated series, individual gas for one-sample rows.}
+\label{tab:gas}
+\setlength{\tabcolsep}{3pt}\renewcommand{\arraystretch}{1.1}
+\begin{tabularx}{\columnwidth}{>{\raggedright\arraybackslash}Xrr}
+\toprule Operation & Gas & Samples\\\midrule
+Wallet-RBAC enrollment (baseline) & 43,928 & 1\\
+Role-root update & 36,537 & 30\\
+First wallet authorization & 367,339 & 1\\
+Warmed reauthorization & 310,463 & 30\\
+One record registration & 110,259 & 20\\
+Revocation request & 69,513 & 30\\
+Revocation execution & 58,717 & 30\\
+\bottomrule\end{tabularx}
+\par\smallskip\raggedright First enrollment of an empty role, deployment, session revocation and retention scheduling/keeper gas were not separately measured. Off-chain stages incur no chain transaction gas.
+\end{table}

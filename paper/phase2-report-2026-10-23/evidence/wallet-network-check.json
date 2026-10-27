@@ -1,0 +1,14 @@
+{
+  "passed": true,
+  "date": "2026-10-22T19:54:32.222Z",
+  "browser": "155.0.4283.62",
+  "wallet": "EIP-1193 test provider, not actual MetaMask",
+  "checks": [
+    "wrong-network Connect requests switch",
+    "selected chain verified before showing connected account",
+    "chainChanged during connection completes safely",
+    "authentication enabled after credential creation",
+    "later chain change clears credential and wallet state",
+    "no page errors"
+  ]
+}

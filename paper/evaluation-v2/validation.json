@@ -1,0 +1,59 @@
+{
+  "startedAt": "2026-10-22T13:53:20.520Z",
+  "node": "v22.19.0",
+  "checks": [
+    {
+      "name": "compile",
+      "passed": true
+    },
+    {
+      "name": "abis",
+      "passed": true
+    },
+    {
+      "name": "source",
+      "passed": true
+    },
+    {
+      "name": "frontend",
+      "passed": true
+    },
+    {
+      "name": "tests",
+      "passed": true
+    }
+  ],
+  "testsPassed": 28,
+  "testsSkipped": 0,
+  "sourceHashes": {
+    "package-lock.json": "ca7cafdd1c6bb1b392f91ff0710f8fefaa34cf2912bc692a7a1cbf9d1a31adef",
+    "src/App.jsx": "11231a7f93d3128702414d56bbd82c106f046d5ae9e08b75986a5adbd0be258a",
+    "src/prover.worker.js": "4357047fcedc29dc91a381b38d7a755473ba6589e8b5ba17ef2673f3b7a0bbc1",
+    "shared/protocol.mjs": "cf8b841db2a52c427342633751fcccd6845bc8cd2d740b5926ba90d21d1256fe",
+    "server/app.js": "b273b5a2d48e1bda058a6f571a793e3757fab074f609a8fb6b098b505effd5a9",
+    "server/auth.js": "6f92a09ce55e272b77c617db0ced264dd1862de8f0fdf1b0138aa269b5824157",
+    "server/bfvService.js": "15e1a6fece7261748e61c3c3e128214c49f51a223e1a342fc9a0896132237dac",
+    "server/chain.js": "a2c028a6cc85f2bdd3d803a116aa88c725182bc4368749654d7b01b0394651f5",
+    "server/config.js": "7f3e7be4af828c585d3a1befb080d09d9e5bc8b4f24935f8cffbb5fbe169eece",
+    "server/crypto.js": "af0038b37defa403db1abdc9fac07d7208c493919ec09cbe21409f36cc1966a8",
+    "server/index.js": "a5d87b3e089e63e8f952b7e1a737cbfd0ca10121db74f500b367c59e9d81dced",
+    "server/ipfsService.js": "f420b3ce0709076d2f2bdcce73817fa5cc5ff7a771b46fa6326f9d3d8aa5a60f",
+    "server/pfeService.js": "58febe5331a57c447142616b0e0a2358b3d34d9ad666eacdf3b4811d99886dd0",
+    "server/revocation.js": "63f22b35f328ae5ed2275c1997678fe472a31737c61d6828c0a8c4780dc2ee40",
+    "server/service.js": "5ef32f59c67a91fd30bfea9dd3934dac8f4418ec1268b764b021036e2ef1864c",
+    "server/storage.js": "89f0825b7fd9330fe6ba709c1ee33bca2d14e778a0dccd0d69f65840cbf86aab",
+    "server/store.js": "e69367e1a57c300403f6dd3787b85af84b56d522aa7d35a9d1dc62ca60b2967b",
+    "server/zkpService.js": "80f917d8cc7962ae93943bf7e09f6893be6ad9de87445cbf837213bcb074558e",
+    "contracts/Groth16Verifier.sol": "25c764b9a4d66eb2872db0e2447e2e01cf77170003a02006bea38ef36b3c7d8b",
+    "contracts/IZKPVerifier.sol": "6202dbad0c2618c428333daa80911079425763deab39fff65bbdadc63e28e65e",
+    "contracts/LifecycleManager.sol": "b4b71416c72b0c873627b0096680f7b078579310b4db0386f7007b43c58b3c9c",
+    "contracts/MockZKPVerifier.sol": "85aadbcee5f14eaa36660cfe67dedfb656f72fa9ca0cdccdb9d58c82974eb708",
+    "contracts/OrganRegistry.sol": "89cd4608bbbbd4b88b420451ff0c4e68780c9cfac7b2e45d2117ad8d034ee368",
+    "contracts/PFEKeyIssuer.sol": "0b0868584cefba9a0688c68c83b15ea454e8a4d0dba396ae776788ab594371f7",
+    "contracts/RoleRegistry.sol": "4e8e5aa442b8d7929442e58a84e418484e59a368ef012074c1786eb96979153f",
+    "contracts/ZKPVerifier.sol": "bc2fc3b1abbd467e4cfd82879969999a7f5e40c720b4b439a8d9c54df360c192",
+    "contracts/ZKPVerifier_generated.sol": "25c764b9a4d66eb2872db0e2447e2e01cf77170003a02006bea38ef36b3c7d8b"
+  },
+  "completedAt": "2026-10-22T13:54:31.986Z",
+  "passed": true
+}

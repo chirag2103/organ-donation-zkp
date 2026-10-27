@@ -1,0 +1,19 @@
+name: Verify protocol v2
+on: [push, pull_request]
+jobs:
+  synthetic-prototype:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+          cache: npm
+      - run: npm ci
+      - run: npm run circuit:compile
+      - run: npm run ceremony
+      - run: npm run compile
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build:frontend
+      # Live Kubo/browser acceptance is an explicit separate command (npm run demo).

@@ -1,0 +1,18 @@
+\begin{table*}[t]
+\centering\scriptsize
+\caption{Authenticated HTTP matching-job latency in milliseconds: 10 warmups and 30 measured samples per configuration. Jobs use established sessions and include 100-ms result polling.}
+\label{tab:workloads}
+\renewcommand{\arraystretch}{1.12}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}Xlrrr}
+\toprule Configuration & Matrix & Median & p95 & SD\\\midrule
+Plaintext + wallet RBAC & $1\times1$ & 134.88 & 146.71 & 6.54\\
+Plaintext + wallet RBAC & $5\times5$ & 291.90 & 336.71 & 47.04\\
+Plaintext + wallet RBAC & $10\times10$ & 862.31 & 1,080.33 & 72.85\\
+BFV + wallet RBAC & $1\times1$ & 384.68 & 599.39 & 85.15\\
+BFV + wallet RBAC & $5\times5$ & 7,203.02 & 7,486.88 & 173.74\\
+BFV + wallet RBAC & $10\times10$ & 11,946.91 & 17,289.18 & 1,464.74\\
+BFV + ZKP authorization & $1\times1$ & 164.48 & 198.90 & 11.34\\
+BFV + ZKP authorization & $5\times5$ & 3,292.05 & 3,423.10 & 77.39\\
+BFV + ZKP authorization & $10\times10$ & 12,116.84 & 12,406.25 & 148.14\\
+\bottomrule\end{tabularx}
+\end{table*}

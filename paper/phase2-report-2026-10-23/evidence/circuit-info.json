@@ -1,0 +1,12 @@
+{
+  "sourceCommand": "node node_modules/snarkjs/cli.js r1cs info circuits/build/roleProof.r1cs",
+  "compilerVersion": "circom 2.2.3",
+  "curve": "bn-128",
+  "wires": 13538,
+  "constraints": 13513,
+  "privateInputs": 42,
+  "publicInputs": 7,
+  "labels": 20065,
+  "outputs": 0,
+  "r1csSha256": "6811a63e367068728bb694072117e766fc56073b113401e86b1dd29797fd56e6"
+}

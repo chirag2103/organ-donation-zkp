@@ -1,0 +1,18 @@
+{
+  "version": 2,
+  "circuitHash": "6811a63e367068728bb694072117e766fc56073b113401e86b1dd29797fd56e6",
+  "zkeyHash": "e7864a0b89667697de21b60870116562ef8771810bbe0997d48ecec612ab11bd",
+  "wasmHash": "8910bcbfb02958e466ec266f6c4e74f80f70c02b30bbbcc4bc6bf0f891f4d090",
+  "ptauHash": "4197d1f20790ef054aa13f62d908d47c89d5c9f7272dd890d2a130694d2bbdfc",
+  "verified": true,
+  "setup": "local single secret phase-two contributor; inherited local phase-one transcript",
+  "publicSignals": [
+    "merkleRoot",
+    "roleId",
+    "nullifier",
+    "recipient",
+    "chainId",
+    "issuer",
+    "rootVersion"
+  ]
+}
